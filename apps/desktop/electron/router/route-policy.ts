@@ -53,9 +53,10 @@ const TIER_FALLBACKS: Record<ModelTier, readonly ModelTier[]> = {
 
 function preferredTier(kind: TaskKind, band: DifficultyBand): ModelTier {
   if (band === "hard") return "frontier";
-  if (kind === "coding" || kind === "research") return band === "moderate" ? "frontier" : "hosted";
-  // Settings questions, chat and writing stay local unless they look hard.
-  return band === "moderate" ? "hosted" : "local";
+  // Easy work stays on this Mac when a local model is tagged for it (a local
+  // coder for SQL and one-liners, a general model for quick facts).
+  if (band === "easy") return "local";
+  return kind === "coding" || kind === "research" ? "frontier" : "hosted";
 }
 
 function thinkingFor(kind: TaskKind, band: DifficultyBand): RouteThinkingLevel {
@@ -105,7 +106,8 @@ function pickRosterModel(
   for (const tier of TIER_FALLBACKS[wantedTier]) {
     const inTier = usable.filter((model) => model.tier === tier);
     const tagged = inTier.find((model) => model.capabilities.includes(capabilityFor(kind)));
-    const model = tagged ?? inTier[0];
+    // Local models are small specialists: use one only for what it is tagged for.
+    const model = tagged ?? (tier === "local" ? undefined : inTier[0]);
     if (model) return { model, tier, tagged: Boolean(tagged) };
   }
   return undefined;

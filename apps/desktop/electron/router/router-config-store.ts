@@ -8,6 +8,7 @@ import {
   type RosterModel,
   type RouterConfig,
 } from "../../contracts/router";
+import { localModelProfile } from "../../contracts/local-models";
 import { readJsonWithBackup, writeFileAtomicQueued } from "../persistence/atomic-file-write";
 import type { AvailableModel } from "./route-policy";
 
@@ -122,6 +123,16 @@ export function seedRoster(
       : FRONTIER_PROVIDERS.has(model.provider)
         ? "frontier"
         : "hosted";
+    const profile = tier === "local" ? localModelProfile(model.modelId) : undefined;
+    if (profile) {
+      return {
+        provider: model.provider,
+        modelId: model.modelId,
+        tier,
+        capabilities: [...profile.capabilities],
+        goodAt: profile.summary,
+      };
+    }
     const capabilities = capabilitiesFor(model, tier);
     return {
       provider: model.provider,
