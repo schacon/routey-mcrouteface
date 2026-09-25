@@ -30,7 +30,12 @@ import {
 } from "./session-supervisor.js";
 import { RuntimeSupervisor, type RuntimeSupervisorOptions } from "./runtime-supervisor.js";
 import { createRuntimeDependencies } from "./runtime-deps.js";
-import { generateThreadTitle, type GenerateThreadTitleOptions } from "./thread-title-generator.js";
+import {
+  generateSessionPurpose,
+  generateThreadTitle,
+  type GenerateSessionPurposeOptions,
+  type GenerateThreadTitleOptions,
+} from "./thread-title-generator.js";
 
 export interface PiSdkDriverConfig extends PiSdkDriverOptions, RuntimeSupervisorOptions {}
 
@@ -176,6 +181,13 @@ export class PiSdkDriver implements SessionDriver {
 
   getSessionSchemaInfo(sessionRef: SessionRef) {
     return this.supervisor.getSessionSchemaInfo(sessionRef);
+  }
+
+  generateSessionPurpose(
+    workspace: WorkspaceRef,
+    options: GenerateSessionPurposeOptions,
+  ): Promise<string | null> {
+    return generateSessionPurpose(workspace, options, { agentDir: this.agentDir });
   }
 
   generateThreadTitle(

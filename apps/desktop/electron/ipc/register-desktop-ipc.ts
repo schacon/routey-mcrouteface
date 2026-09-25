@@ -25,6 +25,7 @@ import { WorkbenchRequests, type WorkbenchOwner } from "./workbench-requests";
 import type { DesktopExtensionViewOwner } from "../extensions/extension-view-owner";
 import { registerExtensionViewRequests } from "./extension-view-requests";
 import { registerReviewRequests, type ReviewRequestsOwner } from "./review-requests";
+import { registerRouterRequests, type RouterRequestsOwner } from "./router-requests";
 import { mainFrameHandler } from "./main-frame-ipc";
 import { assertComposerAttachmentPixels } from "./composer-attachment-pixels";
 import {
@@ -98,6 +99,7 @@ type ConversationOwner = Pick<
   | "setSessionPinned"
   | "createSession"
   | "startThread"
+  | "startRoutedSession"
   | "forkThread"
   | "cancelCurrentRun"
   | "addComposerAttachments"
@@ -163,6 +165,7 @@ export interface DesktopIpcOwners {
   readonly orchestration: OrchestrationOwner;
   readonly scheduledTasks: ScheduledTaskOwner;
   readonly settings: SettingsOwner;
+  readonly router: RouterRequestsOwner;
 }
 
 export interface DesktopIpcCapabilities {
@@ -223,6 +226,7 @@ export function registerDesktopIpc({
 }: RegisterDesktopIpcOptions): void {
   const handleMainFrame = mainFrameHandler(windows);
   registerReviewRequests(handleMainFrame, owners.review);
+  registerRouterRequests(handleMainFrame, owners.router);
   registerExtensionViewRequests(handleMainFrame, windows, owners.extensionViews);
   const workbench = new WorkbenchRequests(owners.workbench);
   const workbenchSenders = new WeakSet<Electron.WebContents>();
@@ -617,6 +621,20 @@ export function registerDesktopIpc({
       assertComposerAttachmentPixels(input.attachments);
     }
     return run(event, () => owners.conversation.startThread(input));
+  });
+  ipcMain.handle(desktopIpc.startRoutedSession, (event, rawInput: unknown) => {
+    const record = expectRecord(rawInput, "input");
+    const prompt = expectString(record.prompt, "input.prompt");
+    const attachments =
+      record.attachments === undefined
+        ? undefined
+        : expectComposerAttachments(record.attachments, "input.attachments");
+    if (attachments?.length) {
+      assertComposerAttachmentPixels(attachments);
+    }
+    return run(event, () =>
+      owners.conversation.startRoutedSession({ prompt, ...(attachments ? { attachments } : {}) }),
+    );
   });
   ipcMain.handle(desktopIpc.forkThread, (event, rawInput: unknown) =>
     run(event, () => owners.conversation.forkThread(expectForkThreadInput(rawInput))),

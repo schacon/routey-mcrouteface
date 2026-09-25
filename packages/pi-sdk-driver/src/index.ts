@@ -21,7 +21,10 @@ export { SessionSupervisor } from "./session-supervisor.js";
 export { SessionLeasedError } from "./session-lease.js";
 export type { LeaseInfo } from "./session-lease.js";
 export { RUNTIME_SCHEMA_VERSION } from "./session-schema.js";
-export type { GenerateThreadTitleOptions } from "./thread-title-generator.js";
+export type {
+  GenerateSessionPurposeOptions,
+  GenerateThreadTitleOptions,
+} from "./thread-title-generator.js";
 export type {
   PiDesktopExtensionObserver,
   PiDesktopExtensionRuntime,

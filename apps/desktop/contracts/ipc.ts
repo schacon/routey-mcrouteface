@@ -15,6 +15,7 @@ import type {
 import type { ClipboardImageRead } from "./composer-attachments";
 import type { SessionRef } from "@pi-gui/session-driver/types";
 import type { SaveTaskWorkbenchTemplateInput, TaskWorkbenchTemplate } from "./workbench";
+import type { RouterConfig, RouterOverview, RouterSessionInfo } from "./router";
 import type {
   TurnChangesInput,
   TurnChangesResult,
@@ -189,6 +190,11 @@ export const desktopIpc = {
   setThemeMode: "pi-gui:set-theme-mode",
   setThemePresetId: "pi-gui:set-theme-preset-id",
   themeChanged: "pi-gui:theme-changed",
+  startRoutedSession: "pi-gui:start-routed-session",
+  getRouterSessionInfo: "pi-gui:get-router-session-info",
+  getRouterOverview: "pi-gui:get-router-overview",
+  setRouterConfig: "pi-gui:set-router-config",
+  routerChanged: "pi-gui:router-changed",
   ping: "app:ping",
   openExternal: "app:open-external",
   relaunchApplication: "pi-gui:relaunch-application",
@@ -838,4 +844,14 @@ export interface PiDesktopApi {
   setThemeMode(mode: "system" | "light" | "dark"): Promise<DesktopAppState>;
   onThemeChanged(callback: (theme: "light" | "dark") => void): () => void;
   relaunchApplication(): Promise<void>;
+  /** Routey: start a session whose directory, model, thinking and mode the router picks. */
+  startRoutedSession(input: {
+    readonly prompt: string;
+    readonly attachments?: readonly ComposerAttachment[];
+  }): Promise<DesktopAppState>;
+  getRouterSessionInfo(target: SessionRef): Promise<RouterSessionInfo>;
+  getRouterOverview(): Promise<RouterOverview>;
+  setRouterConfig(config: RouterConfig): Promise<RouterOverview>;
+  /** A session's routing info changed, or (null) the router's own status did. */
+  onRouterChanged(listener: (target: SessionRef | null) => void): () => void;
 }
