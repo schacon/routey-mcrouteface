@@ -304,3 +304,32 @@ export function decodeStartRoutedSessionInput(value: unknown): StartRoutedSessio
   const record = expectRecord(value, "input");
   return { prompt: expectString(record.prompt, "input.prompt") };
 }
+
+/** Tokens one model used, attributed from a session's usage totals after a routed turn. */
+export interface ModelTokenUsage {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+}
+
+export interface RouterModelStats {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly tier?: ModelTier;
+  /** Turns the router sent to this model. */
+  readonly turns: number;
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+}
+
+export interface RouterStats {
+  readonly scope: "session" | "all";
+  readonly sessions: number;
+  readonly turns: number;
+  readonly models: readonly RouterModelStats[];
+  /** Earliest routed turn counted. */
+  readonly since?: string;
+}

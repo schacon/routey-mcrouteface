@@ -24,6 +24,7 @@ import { FileWorkbench } from "../features/workbench/file-workbench";
 import { GitButlerPanel } from "../features/workbench/gitbutler-panel";
 import { InfoPanel } from "../features/workbench/info-panel";
 import { InspectorPanel } from "../features/workbench/inspector-panel";
+import { StatsPanel } from "../features/workbench/stats-panel";
 import { useWorkbench } from "../features/workbench/use-workbench";
 import {
   ExtensionViewPanel,
@@ -1222,6 +1223,9 @@ export default function App() {
                     sessionTitle={displayedSessionTitle}
                     onOpenInspector={() => workbench.openTool({ kind: "inspector" })}
                   />
+                ),
+                stats: () => (
+                  <StatsPanel key={selectedSessionKey} api={api} target={workbenchTarget} />
                 ),
                 inspector: () => (
                   <InspectorPanel key={selectedSessionKey} api={api} target={workbenchTarget} />

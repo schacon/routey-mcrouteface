@@ -4,7 +4,10 @@ import type { RouterOwner } from "../router/router-owner";
 import type { MainFrameHandler } from "./main-frame-ipc";
 import { expectSessionTarget } from "./request-validation";
 
-export type RouterRequestsOwner = Pick<RouterOwner, "sessionInfo" | "overview" | "setConfig">;
+export type RouterRequestsOwner = Pick<
+  RouterOwner,
+  "sessionInfo" | "overview" | "setConfig" | "stats"
+>;
 
 export function registerRouterRequests(handle: MainFrameHandler, owner: RouterRequestsOwner): void {
   handle(desktopIpc.getRouterSessionInfo, expectSessionTarget, (target) =>
@@ -16,4 +19,9 @@ export function registerRouterRequests(handle: MainFrameHandler, owner: RouterRe
     () => owner.overview(),
   );
   handle(desktopIpc.setRouterConfig, decodeRouterConfig, (config) => owner.setConfig(config));
+  handle(
+    desktopIpc.getRouterStats,
+    (raw) => (raw === null ? undefined : expectSessionTarget(raw)),
+    (target) => owner.stats(target),
+  );
 }

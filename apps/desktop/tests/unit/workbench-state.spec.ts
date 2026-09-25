@@ -18,7 +18,7 @@ test("tasks without a saved layout open the workbench on Info, with the Inspecto
   const existing = initialWorkbenchView("checkout");
   expect(existing).toMatchObject({
     visibility: "visible",
-    tools: [{ kind: "info" }, { kind: "inspector" }],
+    tools: [{ kind: "info" }, { kind: "inspector" }, { kind: "stats" }],
     selection: { kind: "tool", toolId: "info" },
     changes: { scope: { kind: "uncommitted" }, workspaceId: "checkout", selectedPath: null },
   });
@@ -30,7 +30,7 @@ test("opening a tool adds or focuses its singleton without discarding other tool
   const files = reduceWorkbench(initial, { type: "open-tool", tool: { kind: "files" } });
   const terminal = reduceWorkbench(files, { type: "open-tool", tool: { kind: "terminal" } });
   const focused = reduceWorkbench(terminal, { type: "open-tool", tool: { kind: "files" } });
-  expect(focused.tools.map(toolRefId)).toEqual(["info", "inspector", "files", "terminal"]);
+  expect(focused.tools.map(toolRefId)).toEqual(["info", "inspector", "stats", "files", "terminal"]);
   expect(focused.selection).toEqual({ kind: "tool", toolId: "files" });
   expect(reduceWorkbench(focused, { type: "open-tool", tool: { kind: "files" } })).toBe(focused);
   expect(reduceWorkbench(focused, { type: "activate-tool", toolId: "missing" })).toBe(focused);
@@ -41,9 +41,9 @@ test("close selects a neighbor, preserves inactive selection, and leaves a choos
   for (const kind of ["files", "terminal"] as const) {
     view = reduceWorkbench(view, { type: "open-tool", tool: { kind } });
   }
-  const closedInactive = reduceWorkbench(
-    reduceWorkbench(view, { type: "close-tool", toolId: "info" }),
-    { type: "close-tool", toolId: "inspector" },
+  const closedInactive = ["info", "inspector", "stats"].reduce(
+    (current, toolId) => reduceWorkbench(current, { type: "close-tool", toolId }),
+    view,
   );
   expect(closedInactive.selection).toEqual({ kind: "tool", toolId: "terminal" });
   const files = reduceWorkbench(closedInactive, { type: "close-tool", toolId: "terminal" });
@@ -104,7 +104,7 @@ test("saved extension references retain their own identity without a registered 
   const second: ToolRef = { kind: "extension", extensionId: "other", viewId: "pull-request" };
   let view = reduceWorkbench(initialWorkbenchView("checkout"), { type: "open-tool", tool: first });
   view = reduceWorkbench(view, { type: "open-tool", tool: second });
-  expect(view.tools).toHaveLength(4);
+  expect(view.tools).toHaveLength(5);
   expect(activeWorkbenchTool(view)).toEqual(second);
   expect(decodeTaskWorkbenchTemplate(view)).toEqual(view);
 });
@@ -121,14 +121,19 @@ test("restore rebases early explicit actions without losing saved tools or docum
     { type: "open-tool", tool: { kind: "terminal" } },
     { type: "open-file", file: { workspaceId: "checkout", path: "early-link.ts", line: 5 } },
   ]);
-  expect(live.tools.map(toolRefId)).toEqual(["info", "inspector", "files", "terminal"]);
+  expect(live.tools.map(toolRefId)).toEqual(["info", "inspector", "stats", "files", "terminal"]);
   expect(live.files.tabs.tabs).toEqual(["saved.ts", "early-link.ts"]);
   expect(live.files.tabs.active).toBe("early-link.ts");
   // A second window can load the durable template without mutating the first window's value.
   const secondWindow = restoreWorkbenchView(initialWorkbenchView("checkout"), saved, []).view;
   const editedSecond = reduceWorkbench(secondWindow, { type: "close-tool", toolId: "files" });
-  expect(editedSecond.tools).toEqual([{ kind: "info" }, { kind: "inspector" }]);
-  expect(saved.tools).toEqual([{ kind: "info" }, { kind: "inspector" }, { kind: "files" }]);
+  expect(editedSecond.tools).toEqual([{ kind: "info" }, { kind: "inspector" }, { kind: "stats" }]);
+  expect(saved.tools).toEqual([
+    { kind: "info" },
+    { kind: "inspector" },
+    { kind: "stats" },
+    { kind: "files" },
+  ]);
 });
 
 test("the file limit preserves existing references and reports blocked appends during restore", () => {

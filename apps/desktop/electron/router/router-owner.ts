@@ -6,6 +6,8 @@ import type {
   ClassifierOption,
   ClassifierState,
   DiscoveredProject,
+  ModelTokenUsage,
+  RouterStats,
   RouteDecision,
   RouteMode,
   RouterConfig,
@@ -18,6 +20,7 @@ import type { LayaClassifier } from "./laya-client";
 import { resolveRouteDecision, rosterModelUses, type AvailableModel } from "./route-policy";
 import { DEFAULT_SCRATCH_DIRECTORY, RouterConfigStore } from "./router-config-store";
 import type { Classification } from "./router-classifier";
+import { aggregateRouterStats } from "./router-stats";
 import { CONTINUATION_CUE } from "./router-signals";
 import { listOllamaModels, ollamaBaseUrl, warmOllamaModel } from "./ollama-client";
 import {
@@ -71,6 +74,8 @@ export class RouterOwner {
   private readonly modesBySessionId = new Map<string, RouteMode>();
   private readonly pendingBySessionKey = new Map<string, PendingRoute>();
   private readonly turnCountBySessionKey = new Map<string, number>();
+  private readonly routedSessionKeys = new Set<string>();
+  private readonly startedSessionKeys = new Set<string>();
   private ollamaUrlPromise: Promise<string> | undefined;
   private ollamaModelsCache:
     { readonly at: number; readonly models: readonly string[] | undefined } | undefined;
@@ -223,6 +228,37 @@ export class RouterOwner {
     return this.log.read(sessionRef);
   }
 
+  /** Routed turns and tokens per model, for one session or every session. */
+  async stats(sessionRef: SessionRef | undefined): Promise<RouterStats> {
+    if (sessionRef) {
+      const [info, usage] = await Promise.all([
+        this.log.read(sessionRef),
+        this.log.readUsage(sessionRef),
+      ]);
+      return aggregateRouterStats("session", [{ decisions: info.decisions, usage }]);
+    }
+    return aggregateRouterStats("all", await this.log.readAllSessions());
+  }
+
+  /**
+   * Tokens a session used since its last usage report, attributed to the model
+   * that ran it. Only sessions with a routed turn in this run are counted, so a
+   * session's history loaded at startup is not mistaken for new usage.
+   */
+  recordUsage(sessionRef: SessionRef, fromZero: boolean, usage: ModelTokenUsage): void {
+    const key = keyOf(sessionRef);
+    if (!this.routedSessionKeys.has(key)) return;
+    // Without a baseline the totals include history, unless this run started the session.
+    if (fromZero && !this.startedSessionKeys.has(key)) return;
+    if (usage.input <= 0 && usage.output <= 0 && usage.cacheRead <= 0) return;
+    this.log
+      .appendUsage(sessionRef, usage)
+      .then(() => this.host.publish(sessionRef))
+      .catch((error: unknown) => {
+        console.error("[router] recording token usage failed", error);
+      });
+  }
+
   /** Decide a new session's first turn, including where it runs. */
   async decideFirstTurn(prompt: string, hasImages: boolean): Promise<PendingRoute> {
     const config = await this.config();
@@ -248,6 +284,7 @@ export class RouterOwner {
   /** The new session exists: its first send uses the decision made for it. */
   adoptFirstTurn(sessionRef: SessionRef, pending: PendingRoute): void {
     this.pendingBySessionKey.set(keyOf(sessionRef), pending);
+    this.startedSessionKeys.add(keyOf(sessionRef));
     this.modesBySessionId.set(sessionRef.sessionId, pending.record.decision.mode);
   }
 
@@ -314,6 +351,7 @@ export class RouterOwner {
       }
     }
     this.modesBySessionId.set(sessionRef.sessionId, record.decision.mode);
+    this.routedSessionKeys.add(key);
     await this.log.append(sessionRef, {
       ...record,
       id: randomUUID(),

@@ -4337,12 +4337,30 @@ export class DesktopAppStore {
     }
   }
 
+  /** Hands the router the tokens used since the previous usage report, for its stats. */
+  private reportRoutedUsage(
+    sessionRef: SessionRef,
+    previous: SessionUsageSnapshot | undefined,
+    next: SessionUsageSnapshot,
+  ): void {
+    const config = this.sessionState.sessionConfigBySession.get(sessionKey(sessionRef));
+    if (!this.router || !config?.provider || !config.modelId) return;
+    this.router.recordUsage(sessionRef, previous === undefined, {
+      provider: config.provider,
+      modelId: config.modelId,
+      input: next.totals.input - (previous?.totals.input ?? 0),
+      output: next.totals.output - (previous?.totals.output ?? 0),
+      cacheRead: next.totals.cacheRead - (previous?.totals.cacheRead ?? 0),
+    });
+  }
+
   private updateSessionUsage(
     sessionRef: SessionRef,
     usage: SessionUsageSnapshot | undefined,
   ): void {
     const key = sessionKey(sessionRef);
     if (usage) {
+      this.reportRoutedUsage(sessionRef, this.sessionState.sessionUsageBySession.get(key), usage);
       this.sessionState.sessionUsageBySession.set(key, usage);
     } else {
       this.sessionState.sessionUsageBySession.delete(key);

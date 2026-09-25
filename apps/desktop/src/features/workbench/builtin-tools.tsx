@@ -1,6 +1,13 @@
 import type { ComponentType, ReactNode } from "react";
 import { BUILTIN_TOOL_KINDS, type BuiltinToolKind } from "../../../contracts/workbench";
-import { FileIcon, ReasoningIcon, StatusIcon, TerminalIcon, WorktreeIcon } from "../../ui/icons";
+import {
+  FileIcon,
+  ModelIcon,
+  ReasoningIcon,
+  StatusIcon,
+  TerminalIcon,
+  WorktreeIcon,
+} from "../../ui/icons";
 
 interface BuiltinToolDefinition {
   readonly label: string;
@@ -22,6 +29,11 @@ export const BUILTIN_TOOLS = {
     label: "Inspector",
     description: "Why the router picked each turn's model, mode and effort",
     Icon: ReasoningIcon,
+  },
+  stats: {
+    label: "Stats",
+    description: "Turns and tokens per model, for this session or all sessions",
+    Icon: ModelIcon,
   },
   gitbutler: {
     label: "GitButler",

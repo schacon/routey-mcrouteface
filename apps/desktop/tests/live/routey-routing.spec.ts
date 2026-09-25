@@ -92,6 +92,13 @@ test("routes a new session, explains the decision, and shows GitButler status", 
     await expect(turn).toContainText("answer");
     await shot("03-inspector");
 
+    // Stats count the routed turn and the tokens the local model used.
+    await window.getByTestId("workbench-tab-stats").click();
+    const statsRow = window.getByTestId("stats-table").locator("tbody tr").first();
+    await expect(statsRow).toContainText("qwen", { timeout: 15_000 });
+    await expect(statsRow.locator("td").nth(1)).not.toHaveText("–", { timeout: 15_000 });
+    await shot("03b-stats");
+
     // A second session that names this repo runs there, read-only.
     await window.getByTestId("topbar-new-session").click();
     await composer.fill(

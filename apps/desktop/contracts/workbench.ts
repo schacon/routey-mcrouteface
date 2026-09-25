@@ -5,7 +5,14 @@ export const MAX_WORKBENCH_FILE_TABS = 100;
 export const MAX_WORKBENCH_TOOLS = 32;
 
 /** Every built-in tool; its presentation table must cover each kind. */
-export const BUILTIN_TOOL_KINDS = ["info", "inspector", "gitbutler", "files", "terminal"] as const;
+export const BUILTIN_TOOL_KINDS = [
+  "info",
+  "inspector",
+  "stats",
+  "gitbutler",
+  "files",
+  "terminal",
+] as const;
 /**
  * Removed tools; a saved layout that lists one loses that tab, not the whole layout.
  * The git Review tab ("changes") gave way to the GitButler panel.
