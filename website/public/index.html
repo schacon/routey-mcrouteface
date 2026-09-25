@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f8fc" />
+    <title>Routey McRouteface — Just ask. Routey finds the way.</title>
+    <meta
+      name="description"
+      content="An agent desktop that starts with your task. Routey McRouteface uses a local decision model to choose the project, model, and mode — with every decision open to inspection."
+    />
+    <meta property="og:title" content="Routey McRouteface — Just ask. Routey finds the way." />
+    <meta
+      property="og:description"
+      content="Less setup between you and your agents. A new desktop built on pi, with local routing and a view into every decision. In development."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/demo.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="brand" href="#" aria-label="Routey McRouteface home">
+        <img src="/favicon.svg" width="40" height="40" alt="" />
+        <span>Routey <span class="brand-surname">McRouteface</span></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#how-it-works">The idea</a>
+        <a href="#roadmap">The road ahead</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <p class="development-note">
+          <span aria-hidden="true"></span> A new direction for the agent desktop. In development.
+        </p>
+        <h1 id="hero-title">Just ask.<br />Routey finds the way.</h1>
+        <p class="hero-description">
+          You bring the task. Routey picks the project, model, and mode.<br class="desktop-break" />
+          Less fiddling with settings. More getting somewhere.
+        </p>
+        <div class="hero-actions">
+          <a class="button" href="#routing-demo"
+            >See how it routes <span aria-hidden="true">↘</span></a
+          >
+          <a class="text-link" href="#how-it-works">Meet your new copilot</a>
+        </div>
+        <p class="hero-footnote">Built on pi. Steered by Laya. Named with questionable judgment.</p>
+      </section>
+
+      <section class="demo-section wrap" id="routing-demo" aria-labelledby="demo-title">
+        <div class="demo-heading">
+          <h2 id="demo-title">One prompt. A little direction.</h2>
+          <span class="example-label">Illustrative routing demo</span>
+        </div>
+        <div class="route-window">
+          <div class="window-bar" aria-hidden="true">
+            <div class="window-dots"><i></i><i></i><i></i></div>
+            <span>Routey McRouteface</span>
+            <span class="window-session">New session</span>
+          </div>
+          <div class="demo-body">
+            <div class="example-controls" role="group" aria-label="Choose an example task" hidden>
+              <button type="button" data-example="question" aria-pressed="true">
+                A quick question
+              </button>
+              <button type="button" data-example="plan" aria-pressed="false">A project plan</button>
+              <button type="button" data-example="code" aria-pressed="false">A coding task</button>
+            </div>
+            <div class="route-result" aria-live="polite" aria-atomic="true">
+              <div class="prompt">
+                <span class="prompt-icon" aria-hidden="true">↗</span>
+                <p id="example-prompt">What's the capital of Peru?</p>
+              </div>
+              <div class="route-line" aria-hidden="true"><span></span></div>
+              <div class="router-node">
+                <img src="/favicon.svg" alt="" width="34" height="34" />
+                <div><strong>Laya</strong><span>The local decision maker</span></div>
+                <span class="node-detail">On your Mac</span>
+              </div>
+              <div class="route-line" aria-hidden="true"><span></span></div>
+              <dl class="route-details">
+                <div>
+                  <dt>Model tier</dt>
+                  <dd id="example-tier">Local</dd>
+                </div>
+                <div>
+                  <dt>Thinking</dt>
+                  <dd id="example-thinking">Off</dd>
+                </div>
+                <div>
+                  <dt>Mode</dt>
+                  <dd id="example-mode">Answer</dd>
+                </div>
+                <div>
+                  <dt>Working directory</dt>
+                  <dd id="example-directory">~/routey-mcrouteface</dd>
+                </div>
+              </dl>
+              <div class="inspector-note">
+                <span class="inspector-icon" aria-hidden="true">↳</span>
+                <p>
+                  <strong>Why this route?</strong>
+                  <span id="example-reason"
+                    >A general question can go to a local model, without opening a project or using
+                    tools.</span
+                  >
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="demo-caption">
+          Example decisions, not a live model. Actual routes depend on your prompt and configured
+          models.
+        </p>
+      </section>
+
+      <section class="idea-section wrap" id="how-it-works" aria-labelledby="idea-title">
+        <div class="section-intro">
+          <h2 id="idea-title">A shorter route<br />from “what if” to work.</h2>
+          <p>
+            Your agent should help with the setup, too. Routey is a new desktop built on the pi
+            framework, designed around a simple place to start: your request.
+          </p>
+        </div>
+        <div class="features">
+          <article>
+            <span class="feature-symbol" aria-hidden="true">↗</span>
+            <h3>Start with the task</h3>
+            <p>
+              A fresh session starts with a text box. Describe what you want; Routey chooses a
+              working directory, model tier, thinking level, and mode.
+            </p>
+          </article>
+          <article>
+            <span class="feature-symbol" aria-hidden="true">⑂</span>
+            <h3>Let the route adapt</h3>
+            <p>
+              A quick answer and a tricky code change need different things. Follow-up turns can use
+              a different model or thinking level while staying in the same project.
+            </p>
+          </article>
+          <article>
+            <span class="feature-symbol" aria-hidden="true">◎</span>
+            <h3>See the reasoning</h3>
+            <p>
+              The Inspector makes routing visible: the questions, choices, probabilities, and
+              reasons. If the router uses its fallback, that belongs in the log, too.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="laya-section" aria-labelledby="laya-title">
+        <div class="wrap laya-layout">
+          <div>
+            <p class="section-kicker">Meet Laya</p>
+            <h2 id="laya-title">Small model.<br />Sense of direction.</h2>
+          </div>
+          <div class="laya-copy">
+            <p>
+              Laya is the local decision model at the heart of the plan. It classifies your request
+              and picks among options, then Routey matches those choices to the models you’ve
+              configured.
+            </p>
+            <p>
+              On supported Macs, Laya runs through Core ML on the Apple Neural Engine. If it’s
+              unavailable, a heuristic fallback keeps routing moving and tells you what happened.
+            </p>
+            <p class="privacy-note">
+              The routing decision is local. The selected agent may use a hosted provider, depending
+              on your model roster.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="roadmap-section wrap" id="roadmap" aria-labelledby="roadmap-title">
+        <div class="section-intro">
+          <h2 id="roadmap-title">A good first stop.<br />A bigger road ahead.</h2>
+          <p>
+            Routey is in development. We’re starting with a simpler shell and one model per turn,
+            then building toward a more capable copilot.
+          </p>
+        </div>
+        <div class="roadmap">
+          <article class="milestone">
+            <span class="milestone-status">First milestone</span>
+            <h3>One task. One clear route.</h3>
+            <p>
+              A focused session UI, automatic routing, an Inspector for every decision, and a
+              GitButler panel alongside your files and terminal.
+            </p>
+            <span class="milestone-dot" aria-hidden="true"></span>
+          </article>
+          <article>
+            <span class="milestone-status">Planned next</span>
+            <h3>More minds when it helps</h3>
+            <p>
+              Send a task to several models, collect their work, and bring the results together.
+            </p>
+            <span class="milestone-dot" aria-hidden="true"></span>
+          </article>
+          <article>
+            <span class="milestone-status">Further down the road</span>
+            <h3>Make yourself at home</h3>
+            <p>
+              Guided setup for local and hosted models, followed by settings you can change through
+              chat.
+            </p>
+            <span class="milestone-dot" aria-hidden="true"></span>
+          </article>
+        </div>
+      </section>
+
+      <section class="faq-section wrap" aria-labelledby="faq-title">
+        <h2 id="faq-title">A few things<br />before we set off.</h2>
+        <div class="questions">
+          <details>
+            <summary>Is this a new agent?</summary>
+            <p>
+              Routey is a desktop built on the pi framework and forked from pi-gui. Pi provides the
+              agent runtime; Routey adds a simpler interface and a routing layer.
+            </p>
+          </details>
+          <details>
+            <summary>Can I use my own models?</summary>
+            <p>
+              The plan includes a configurable roster with local, hosted, and frontier tiers. Routey
+              chooses from the models that are available and authenticated in your setup.
+            </p>
+          </details>
+          <details>
+            <summary>Does everything run locally?</summary>
+            <p>
+              The Laya routing model runs locally on supported Macs. The agent itself can run
+              through a local or hosted model. Your chosen provider determines where that agent
+              request goes.
+            </p>
+          </details>
+          <details>
+            <summary>Can I download it yet?</summary>
+            <p>
+              This page introduces the project and its first milestone. A Routey download and guided
+              onboarding aren’t offered here yet. The roadmap above shows where we’re headed.
+            </p>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer wrap">
+      <a class="brand" href="#"
+        ><img src="/favicon.svg" width="32" height="32" alt="" /><span>Routey McRouteface</span></a
+      >
+      <p>Serious about the task. Less serious about the name.</p>
+      <a href="https://github.com/earendil-works/pi">Built on pi</a>
+    </footer>
+  </body>
+</html>
