@@ -149,6 +149,9 @@ test("routes a new session, explains the decision, and shows GitButler status", 
     await window.getByRole("button", { name: "Router" }).click();
     await expect(window.getByTestId("router-model").first()).toContainText("qwen");
     if (helper) await expect(window.getByTestId("router-laya-status")).toContainText("Ready");
+    const guide = window.getByTestId("local-setup-models");
+    await expect(guide).toBeVisible();
+    await expect(guide.locator("li", { hasText: "Qwen3.5 4B" })).toContainText("In use");
     await shot("08-settings-router");
   } finally {
     await harness.close();

@@ -4,6 +4,7 @@ import {
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import type { ComposerAttachment } from "../../../contracts/desktop-state";
@@ -23,6 +24,8 @@ interface NewThreadViewProps {
   readonly onAddAttachments: (files: File[]) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
   readonly onSubmit: () => void;
+  /** Shown above the text box, such as the local-model setup prompt. */
+  readonly notice?: ReactNode;
 }
 
 /**
@@ -42,6 +45,7 @@ export function NewThreadView({
   onAddAttachments,
   onRemoveAttachment,
   onSubmit,
+  notice,
 }: NewThreadViewProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hasContent = Boolean(prompt.trim() || attachments.length > 0);
@@ -70,6 +74,7 @@ export function NewThreadView({
           <h1 className="new-thread__title">What are we doing?</h1>
         </div>
 
+        {notice}
         <div className="new-thread__composer composer">
           <div className="conversation conversation--composer">
             <ComposerSurface

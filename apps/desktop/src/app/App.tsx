@@ -50,6 +50,7 @@ import {
 } from "../features/threads/thread-groups";
 import { ThreadSwitcher } from "../features/threads/thread-switcher";
 import { SessionsModal } from "../features/sessions/sessions-modal";
+import { useLocalModelSetup } from "../features/settings/local-model-setup";
 import {
   loadThreadSwitcherOrder,
   orderThreadSwitcherEntries,
@@ -87,6 +88,8 @@ import { useTreeForkModals } from "../features/conversation/hooks/use-tree-fork-
 import { useComposerDraftSync } from "../features/conversation/hooks/use-composer-draft-sync";
 import { useSessionComposer } from "../features/conversation/hooks/use-session-composer";
 
+const LOCAL_SETUP_DISMISSED_KEY = "routey.localSetupNoticeDismissed";
+
 export default function App() {
   const desktop = useDesktopAppState();
   const workbenchWidth = useWorkbenchWidth();
@@ -112,6 +115,14 @@ export default function App() {
   >(() => new Set());
   const [scheduledEditor, setScheduledEditor] = useState<ScheduledEditorState | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  const localSetup = useLocalModelSetup(window.piApp);
+  const [localSetupDismissed, setLocalSetupDismissed] = useState(() => {
+    try {
+      return window.localStorage.getItem(LOCAL_SETUP_DISMISSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const api = window.piApp;
 
   useEffect(() => {
@@ -867,6 +878,44 @@ export default function App() {
     ) : null;
 
   const openNewSession = () => newThread.openSurface();
+  const localSetupNotice =
+    localSetup.setup?.needsSetup && !localSetupDismissed ? (
+      <div className="routey-setup-notice" data-testid="local-setup-notice">
+        <div>
+          <strong>
+            {localSetup.setup.ollama === "unreachable"
+              ? "Set up local models"
+              : "Choose your local models"}
+          </strong>
+          <p>
+            Routey sends easy work to small models on this Mac and uses one to route every prompt.
+          </p>
+        </div>
+        <div className="routey-setup-notice__actions">
+          <button
+            className="button button--primary"
+            type="button"
+            onClick={() => openSettings(undefined, "router")}
+          >
+            Set up
+          </button>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => {
+              setLocalSetupDismissed(true);
+              try {
+                window.localStorage.setItem(LOCAL_SETUP_DISMISSED_KEY, "1");
+              } catch {
+                // Storage unavailable: the notice stays dismissed for this window only.
+              }
+            }}
+          >
+            Not now
+          </button>
+        </div>
+      </div>
+    ) : null;
   const newSessionView = (
     <NewThreadView
       prompt={newThread.prompt}
@@ -881,6 +930,7 @@ export default function App() {
       onAddAttachments={newThread.addAttachments}
       onRemoveAttachment={newThread.removeAttachment}
       onSubmit={newThread.startSession}
+      notice={localSetupNotice}
     />
   );
 

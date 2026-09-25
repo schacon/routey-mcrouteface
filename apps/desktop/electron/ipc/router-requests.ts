@@ -1,4 +1,5 @@
 import { desktopIpc } from "../../contracts/ipc";
+import { decodeLocalModelTags } from "../../contracts/local-models";
 import { decodeRouterConfig } from "../../contracts/router";
 import type { RouterOwner } from "../router/router-owner";
 import type { MainFrameHandler } from "./main-frame-ipc";
@@ -6,7 +7,7 @@ import { expectSessionTarget } from "./request-validation";
 
 export type RouterRequestsOwner = Pick<
   RouterOwner,
-  "sessionInfo" | "overview" | "setConfig" | "stats"
+  "sessionInfo" | "overview" | "setConfig" | "stats" | "localSetup" | "setUpLocalModels"
 >;
 
 export function registerRouterRequests(handle: MainFrameHandler, owner: RouterRequestsOwner): void {
@@ -19,6 +20,12 @@ export function registerRouterRequests(handle: MainFrameHandler, owner: RouterRe
     () => owner.overview(),
   );
   handle(desktopIpc.setRouterConfig, decodeRouterConfig, (config) => owner.setConfig(config));
+  handle(
+    desktopIpc.getLocalModelSetup,
+    () => undefined,
+    () => owner.localSetup(),
+  );
+  handle(desktopIpc.setUpLocalModels, decodeLocalModelTags, (tags) => owner.setUpLocalModels(tags));
   handle(
     desktopIpc.getRouterStats,
     (raw) => (raw === null ? undefined : expectSessionTarget(raw)),

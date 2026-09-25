@@ -195,3 +195,45 @@ export function localModelProfile(tag: string): LocalModelProfile | undefined {
       profile.tag === tag || profile.aliases.includes(tag) || tag.startsWith(`${profile.tag}-`),
   );
 }
+
+export type LocalModelPull =
+  | { readonly state: "queued" }
+  | {
+      readonly state: "pulling";
+      readonly status: string;
+      readonly completed?: number;
+      readonly total?: number;
+    }
+  | { readonly state: "done" }
+  | { readonly state: "failed"; readonly message: string };
+
+export interface LocalModelStatus {
+  readonly profile: LocalModelProfile;
+  /** The installed tag (the profile's tag or an alias), when Ollama has it. */
+  readonly installedTag?: string;
+  /** The router's roster already includes it. */
+  readonly routed: boolean;
+  /** Fits this Mac's memory. */
+  readonly fits: boolean;
+  readonly pull?: LocalModelPull;
+}
+
+export interface LocalModelSetup {
+  readonly ollama: "running" | "unreachable";
+  readonly ollamaUrl: string;
+  readonly memoryGb: number;
+  /** True when no local model is in the roster yet, so onboarding should show. */
+  readonly needsSetup: boolean;
+  readonly models: readonly LocalModelStatus[];
+}
+
+export function decodeLocalModelTags(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.some((tag) => typeof tag !== "string" || !tag.trim())) {
+    throw new TypeError("tags must be an array of model tags");
+  }
+  const known = new Set(LOCAL_MODEL_CATALOG.map((profile) => profile.tag));
+  const tags = value as string[];
+  const unknown = tags.filter((tag) => !known.has(tag));
+  if (unknown.length > 0) throw new TypeError(`Unknown local models: ${unknown.join(", ")}`);
+  return tags;
+}

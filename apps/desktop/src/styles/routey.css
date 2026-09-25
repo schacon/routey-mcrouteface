@@ -457,3 +457,78 @@
   border-bottom: 0;
   font-weight: var(--font-semibold);
 }
+
+/* Local model setup */
+
+.routey-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  font-size: var(--text-sm);
+}
+
+.routey-setup p {
+  margin: 0;
+}
+
+.routey-setup__steps {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.routey-setup__models {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.routey-setup__model label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.routey-setup__model-name {
+  font-weight: var(--font-medium);
+  color: var(--text-strong);
+}
+
+.routey-setup__summary,
+.routey-setup__status {
+  margin: var(--space-0-5) 0 0 calc(var(--space-2) + 14px);
+}
+
+.routey-setup__status {
+  color: var(--accent);
+}
+
+.routey-setup-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
+}
+
+.routey-setup-notice p {
+  margin: var(--space-0-5) 0 0;
+  color: var(--muted);
+}
+
+.routey-setup-notice__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
+}

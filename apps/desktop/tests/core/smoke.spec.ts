@@ -151,3 +151,26 @@ test("Settings holds Scheduled tasks and the Router", async () => {
     await harness.close();
   }
 });
+
+test("offers local model setup and an Ollama install guide when Ollama is missing", async () => {
+  const userDataDir = await makeUserDataDir();
+  const harness = await launchDesktop(userDataDir, { testMode: "background" });
+
+  try {
+    const window = await harness.firstWindow();
+    // Tests point Routey at a closed Ollama port, so no local model is set up.
+    const notice = window.getByTestId("local-setup-notice");
+    await expect(notice).toBeVisible({ timeout: 15_000 });
+    await notice.getByRole("button", { name: "Set up" }).click();
+    const guide = window.getByTestId("local-setup-install");
+    await expect(guide).toBeVisible();
+    await expect(guide.getByRole("button", { name: "Download Ollama" })).toBeVisible();
+    await expect(guide).toContainText("brew install ollama");
+
+    await window.getByRole("button", { name: "Back to app" }).click();
+    await window.getByTestId("local-setup-notice").getByRole("button", { name: "Not now" }).click();
+    await expect(window.getByTestId("local-setup-notice")).toHaveCount(0);
+  } finally {
+    await harness.close();
+  }
+});

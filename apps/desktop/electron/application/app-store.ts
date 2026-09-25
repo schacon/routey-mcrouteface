@@ -1243,6 +1243,65 @@ export class DesktopAppStore {
     };
   }
 
+  /**
+   * Makes Ollama models usable by pi and returns the provider id serving each.
+   * Models a hand-written provider in models.json already lists stay there; the
+   * rest join Routey's managed provider ("ollama", or "routey-ollama" when the
+   * user's own "ollama" entry is not managed by the app).
+   */
+  async registerOllamaModels(
+    scratchDirectory: string,
+    ollamaUrl: string,
+    modelIds: readonly string[],
+  ): Promise<Record<string, string>> {
+    await this.initialize();
+    const baseUrl = `${ollamaUrl.replace(/\/$/, "")}/v1`;
+    const raw = await readModelsJsonProviders();
+    const servedBy: Record<string, string> = {};
+    for (const [providerId, provider] of Object.entries(raw)) {
+      if (provider.baseUrl?.replace(/\/$/, "") !== baseUrl) continue;
+      for (const model of provider.models ?? []) {
+        if (model.id && modelIds.includes(model.id)) servedBy[model.id] ??= providerId;
+      }
+    }
+    const missing = modelIds.filter((id) => !servedBy[id]);
+    if (missing.length === 0) return servedBy;
+
+    const managed = await this.driver.runtimeSupervisor.listCustomProviders();
+    const providerId =
+      !raw.ollama || managed.some((entry) => entry.providerId === "ollama")
+        ? "ollama"
+        : "routey-ollama";
+    const existing = managed.find((entry) => entry.providerId === providerId);
+    const workspace =
+      this.state.workspaces[0] !== undefined
+        ? this.workspaceRefFromState(this.state.workspaces[0].id)
+        : undefined;
+    await mkdir(scratchDirectory, { recursive: true });
+    const target = workspace ?? {
+      workspaceId: scratchDirectory,
+      path: scratchDirectory,
+      displayName: basename(scratchDirectory),
+    };
+    const snapshot = await this.driver.runtimeSupervisor.setCustomProvider(target, {
+      providerId,
+      baseUrl,
+      models: [
+        ...(existing?.models ?? []),
+        ...missing
+          .filter((id) => !existing?.models.some((model) => model.id === id))
+          .map((id) => ({ id })),
+      ],
+    });
+    await this.recordSettingsSelfWrite();
+    if (workspace) {
+      await this.refreshRuntimeForAllWorkspaces(workspace.workspaceId, snapshot);
+      await this.refreshState({ clearLastError: true });
+    }
+    for (const id of missing) servedBy[id] = providerId;
+    return servedBy;
+  }
+
   /** User messages of a session, oldest first, from the loaded transcript. */
   userMessages(sessionRef: SessionRef): readonly string[] {
     return (this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? []).flatMap(
@@ -4727,4 +4786,19 @@ function resolveSelectedSessionIdFromCatalog(
     return preferredSessionId;
   }
   return workspaceSessions[0]?.sessionRef.sessionId ?? "";
+}
+
+/** Providers in pi's models.json as written, including ones the app does not manage. */
+async function readModelsJsonProviders(): Promise<
+  Record<string, { baseUrl?: string; models?: { id?: string }[] }>
+> {
+  const agentDir = process.env.PI_CODING_AGENT_DIR?.trim() || join(homedir(), ".pi", "agent");
+  try {
+    const parsed = JSON.parse(await readFile(join(agentDir, "models.json"), "utf8")) as {
+      providers?: Record<string, { baseUrl?: string; models?: { id?: string }[] }>;
+    };
+    return parsed.providers ?? {};
+  } catch {
+    return {};
+  }
 }

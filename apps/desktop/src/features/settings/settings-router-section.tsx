@@ -11,6 +11,7 @@ import {
   type RouterOverview,
 } from "../../../contracts/router";
 import { formatRelativeTime } from "../../lib/string-utils";
+import { LocalModelSetupGuide } from "./local-model-setup";
 import { SettingsSelect } from "./settings-controls";
 import { SettingsGroup, SettingsRow } from "./settings-utils";
 
@@ -106,6 +107,15 @@ export function SettingsRouterSection({ api }: SettingsRouterSectionProps) {
   return (
     <>
       {error ? <p className="settings-row__description routey-settings__error">{error}</p> : null}
+      <SettingsGroup
+        title="Local models"
+        description="Small models on this Mac take easy work and classify every prompt."
+      >
+        <div className="settings-row">
+          <LocalModelSetupGuide api={api} />
+        </div>
+      </SettingsGroup>
+
       <SettingsGroup
         title="Decision model"
         description="Every prompt is classified on this Mac before it runs: what kind of task it is, how hard, whether it may change files, and which project."

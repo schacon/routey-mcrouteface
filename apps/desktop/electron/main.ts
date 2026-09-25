@@ -234,6 +234,8 @@ function createRouter(appStore: DesktopAppStore): RouterOwner {
           usedAt: workspace.lastOpenedAt,
         })),
       userMessages: (sessionRef) => appStore.userMessages(sessionRef),
+      registerOllamaModels: (scratchDirectory, ollamaUrl, modelIds) =>
+        appStore.registerOllamaModels(scratchDirectory, ollamaUrl, modelIds),
       generatePurpose: (cwd, userMessages, model) =>
         appStore.generateSessionPurpose(cwd, userMessages, model),
       publish: broadcast,

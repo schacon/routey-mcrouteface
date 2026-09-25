@@ -22,7 +22,15 @@ import { DEFAULT_SCRATCH_DIRECTORY, RouterConfigStore } from "./router-config-st
 import type { Classification } from "./router-classifier";
 import { aggregateRouterStats } from "./router-stats";
 import { CONTINUATION_CUE } from "./router-signals";
-import { listOllamaModels, ollamaBaseUrl, warmOllamaModel } from "./ollama-client";
+import { totalmem } from "node:os";
+import {
+  LOCAL_MODEL_CATALOG,
+  localModelProfile,
+  type LocalModelPull,
+  type LocalModelSetup,
+} from "../../contracts/local-models";
+import { buildLocalModelSetup } from "./local-model-setup";
+import { listOllamaModels, ollamaBaseUrl, pullOllamaModel, warmOllamaModel } from "./ollama-client";
 import {
   OLLAMA_CLASSIFIER_RANKING,
   keywordClassifier,
@@ -45,6 +53,12 @@ export interface RouterHost {
   knownWorkspaces(): readonly { readonly path: string; readonly usedAt: string }[];
   /** User messages of a session so far, oldest first, for the purpose summary. */
   userMessages(sessionRef: SessionRef): readonly string[];
+  /** Makes Ollama models usable by pi; returns the provider id serving each model id. */
+  registerOllamaModels(
+    scratchDirectory: string,
+    ollamaUrl: string,
+    modelIds: readonly string[],
+  ): Promise<Record<string, string>>;
   generatePurpose(
     cwd: string,
     userMessages: readonly string[],
@@ -75,6 +89,7 @@ export class RouterOwner {
   private readonly pendingBySessionKey = new Map<string, PendingRoute>();
   private readonly turnCountBySessionKey = new Map<string, number>();
   private readonly routedSessionKeys = new Set<string>();
+  private readonly pulls = new Map<string, LocalModelPull>();
   private readonly startedSessionKeys = new Set<string>();
   private ollamaUrlPromise: Promise<string> | undefined;
   private ollamaModelsCache:
@@ -222,6 +237,112 @@ export class RouterOwner {
         supportsImages: model.supportsImages,
       })),
     };
+  }
+
+  /** Ollama's state and every catalog model's status, for the local-model guide. */
+  async localSetup(): Promise<LocalModelSetup> {
+    this.ollamaModelsCache = undefined;
+    const [config, installed, ollamaUrl] = await Promise.all([
+      this.config(),
+      this.ollamaModels(),
+      this.ollamaUrl(),
+    ]);
+    return buildLocalModelSetup({
+      ollamaUrl,
+      installed,
+      roster: config.roster,
+      memoryGb: Math.round(totalmem() / 1024 ** 3),
+      pulls: this.pulls,
+    });
+  }
+
+  /**
+   * Pulls the chosen catalog models that are not installed, one at a time,
+   * registers them with pi, and adds them to the roster's local tier with the
+   * catalog's tags. Progress is published as it arrives.
+   */
+  async setUpLocalModels(tags: readonly string[]): Promise<LocalModelSetup> {
+    const ollamaUrl = await this.ollamaUrl();
+    if ((await listOllamaModels(ollamaUrl)) === undefined) {
+      throw new Error("Ollama is not running. Install or start it, then try again.");
+    }
+    for (const tag of tags) this.pulls.set(tag, { state: "queued" });
+    this.host.publish(null);
+    void this.runSetup(ollamaUrl, tags).catch((error: unknown) => {
+      console.error("[router] local model setup failed", error);
+    });
+    return this.localSetup();
+  }
+
+  private async runSetup(ollamaUrl: string, tags: readonly string[]): Promise<void> {
+    const ready: string[] = [];
+    for (const tag of tags) {
+      const installed = (await listOllamaModels(ollamaUrl)) ?? [];
+      const profile = LOCAL_MODEL_CATALOG.find((entry) => entry.tag === tag);
+      const present = [tag, ...(profile?.aliases ?? [])].find((name) => installed.includes(name));
+      if (present) {
+        ready.push(present);
+        this.pulls.set(tag, { state: "done" });
+        continue;
+      }
+      let lastPublish = 0;
+      try {
+        await pullOllamaModel(ollamaUrl, tag, (progress) => {
+          this.pulls.set(tag, {
+            state: "pulling",
+            status: progress.status,
+            ...(progress.completed !== undefined ? { completed: progress.completed } : {}),
+            ...(progress.total !== undefined ? { total: progress.total } : {}),
+          });
+          if (Date.now() - lastPublish > 500) {
+            lastPublish = Date.now();
+            this.host.publish(null);
+          }
+        });
+        ready.push(tag);
+        this.pulls.set(tag, { state: "done" });
+      } catch (error) {
+        this.pulls.set(tag, {
+          state: "failed",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      this.host.publish(null);
+    }
+    if (ready.length > 0) await this.addLocalModelsToRoster(ollamaUrl, ready);
+    this.ollamaModelsCache = undefined;
+    this.host.publish(null);
+    await this.warmClassifier();
+  }
+
+  private async addLocalModelsToRoster(ollamaUrl: string, modelIds: readonly string[]) {
+    const config = await this.config();
+    const providers = await this.host.registerOllamaModels(
+      config.scratchDirectory,
+      ollamaUrl,
+      modelIds,
+    );
+    const additions = modelIds.flatMap((modelId) => {
+      const profile = localModelProfile(modelId);
+      const provider = providers[modelId];
+      if (!profile || !provider) return [];
+      if (config.roster.some((model) => model.provider === provider && model.modelId === modelId)) {
+        return [];
+      }
+      return [
+        {
+          provider,
+          modelId,
+          tier: "local" as const,
+          capabilities: [...profile.capabilities],
+          goodAt: profile.summary,
+        },
+      ];
+    });
+    if (additions.length > 0) {
+      // Local models go first so their tier's picks follow the catalog order.
+      await this.configStore.write({ ...config, roster: [...additions, ...config.roster] });
+    }
   }
 
   sessionInfo(sessionRef: SessionRef): Promise<RouterSessionInfo> {

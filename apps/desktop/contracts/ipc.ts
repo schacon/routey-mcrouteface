@@ -17,6 +17,7 @@ import type { SessionRef } from "@pi-gui/session-driver/types";
 import type { SaveTaskWorkbenchTemplateInput, TaskWorkbenchTemplate } from "./workbench";
 import type { RouterConfig, RouterOverview, RouterSessionInfo, RouterStats } from "./router";
 import type { GitButlerStatusResult } from "./gitbutler";
+import type { LocalModelSetup } from "./local-models";
 import type {
   TurnChangesInput,
   TurnChangesResult,
@@ -198,6 +199,8 @@ export const desktopIpc = {
   routerChanged: "pi-gui:router-changed",
   getButStatus: "pi-gui:get-but-status",
   getRouterStats: "pi-gui:get-router-stats",
+  getLocalModelSetup: "pi-gui:get-local-model-setup",
+  setUpLocalModels: "pi-gui:set-up-local-models",
   ping: "app:ping",
   openExternal: "app:open-external",
   relaunchApplication: "pi-gui:relaunch-application",
@@ -859,6 +862,10 @@ export interface PiDesktopApi {
   onRouterChanged(listener: (target: SessionRef | null) => void): () => void;
   /** Routed turns and tokens per model for one session, or every session when null. */
   getRouterStats(target: SessionRef | null): Promise<RouterStats>;
+  /** Ollama's state and the recommended local models, for the setup guide. */
+  getLocalModelSetup(): Promise<LocalModelSetup>;
+  /** Pulls (when missing), registers and routes the chosen catalog models; progress via onRouterChanged. */
+  setUpLocalModels(tags: readonly string[]): Promise<LocalModelSetup>;
   /** `but status` for a session's checkout; read-only. */
   getButStatus(workspaceId: string): Promise<GitButlerStatusResult>;
 }

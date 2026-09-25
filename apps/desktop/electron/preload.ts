@@ -34,6 +34,7 @@ import type {
   RouterStats,
 } from "../contracts/router";
 import type { GitButlerStatusResult } from "../contracts/gitbutler";
+import type { LocalModelSetup } from "../contracts/local-models";
 import type {
   TurnChangesInput,
   TurnChangesResult,
@@ -567,6 +568,10 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.getRouterOverview) as Promise<RouterOverview>,
   setRouterConfig: (config: RouterConfig) =>
     ipcRenderer.invoke(desktopIpc.setRouterConfig, config) as Promise<RouterOverview>,
+  getLocalModelSetup: () =>
+    ipcRenderer.invoke(desktopIpc.getLocalModelSetup) as Promise<LocalModelSetup>,
+  setUpLocalModels: (tags: readonly string[]) =>
+    ipcRenderer.invoke(desktopIpc.setUpLocalModels, tags) as Promise<LocalModelSetup>,
   getRouterStats: (target: SessionRef | null) =>
     ipcRenderer.invoke(desktopIpc.getRouterStats, target) as Promise<RouterStats>,
   getButStatus: (workspaceId: string) =>
