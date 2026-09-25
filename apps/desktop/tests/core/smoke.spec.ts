@@ -1,8 +1,6 @@
-import { basename } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   addWorkspaceViaIpc,
-  chooseThreadGrouping,
   createSessionViaIpc,
   getDesktopState,
   getSelectedTranscript,
@@ -12,7 +10,7 @@ import {
   waitForWorkspaceByPath,
 } from "../helpers/electron-app";
 
-test("adds a workspace to an empty launched app", async () => {
+test("an empty app shows only the New session box and the top-right controls", async () => {
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("launch-diagnostic-workspace");
   const harness = await launchDesktop(userDataDir, { testMode: "background" });
@@ -20,20 +18,25 @@ test("adds a workspace to an empty launched app", async () => {
   try {
     const window = await harness.firstWindow();
     await expect.poll(async () => (await getDesktopState(window)).workspaces).toEqual([]);
+    await expect(window.locator(".sidebar")).toHaveCount(0);
+    for (const id of ["topbar-new-session", "topbar-sessions", "topbar-settings"]) {
+      await expect(window.getByTestId(id)).toBeVisible();
+    }
+    await expect(window.getByLabel("New session prompt")).toBeVisible();
+    await expect(window.locator(".model-selector")).toHaveCount(0);
 
     await addWorkspaceViaIpc(window, workspacePath);
-
-    const workspace = await waitForWorkspaceByPath(window, workspacePath);
-    await expect(window.getByTestId("workspace-list")).toContainText(workspace.name);
+    await waitForWorkspaceByPath(window, workspacePath);
+    await expect(window.getByLabel("New session prompt")).toBeVisible();
   } finally {
     await harness.close();
   }
 });
 
-test("boots an existing workspace and starts a new thread through the real UI", async () => {
+test("starts a routed session from the text box and explains the decision", async () => {
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("core-smoke-workspace");
-  const promptText = "Smoke test thread";
+  const promptText = "Smoke test session";
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -41,18 +44,14 @@ test("boots an existing workspace and starts a new thread through the real UI", 
 
   try {
     const window = await harness.firstWindow();
-
     await waitForWorkspaceByPath(window, workspacePath);
-    await expect(window.getByTestId("workspace-list")).toContainText(basename(workspacePath));
-    await window.getByRole("complementary").getByRole("button", { name: "New thread" }).click();
 
-    const prompt = window.getByLabel("New thread prompt");
+    const prompt = window.getByLabel("New session prompt");
     await expect(prompt).toBeVisible();
     await expect(prompt).toBeFocused();
-    await expect(window.getByRole("heading", { name: "Let's build" })).toBeVisible();
+    await expect(window.getByRole("heading", { name: "What are we doing?" })).toBeVisible();
     await prompt.fill(promptText);
-
-    await window.getByRole("button", { name: "Start thread" }).click();
+    await window.getByRole("button", { name: "Start session" }).click();
 
     await expect(window.locator(".chat-header__title")).toHaveText(/\S+/);
     await expect(window.getByTestId("composer")).toBeFocused();
@@ -69,15 +68,22 @@ test("boots an existing workspace and starts a new thread through the real UI", 
         { timeout: 15_000 },
       )
       .toContain(promptText);
-    await expect(window.getByTestId("transcript")).toContainText(promptText);
+
+    // Tests route without Laya: the Info panel opens by default and the
+    // Inspector says heuristics decided.
+    await expect(window.getByTestId("info-cwd")).toHaveText(workspacePath, { timeout: 15_000 });
+    await window.getByTestId("workbench-tab-inspector").click();
+    const turn = window.getByTestId("inspector-turn").first();
+    await expect(turn).toContainText("heuristics only");
+    await expect(turn).toContainText("first turn");
   } finally {
     await harness.close();
   }
 });
 
-test("aligns workspace names with session titles in the sidebar gutter", async () => {
+test("the Sessions modal searches, switches and restores archived sessions", async () => {
   const userDataDir = await makeUserDataDir();
-  const workspacePath = await makeWorkspace("aligned-sidebar-workspace");
+  const workspacePath = await makeWorkspace("sessions-modal-workspace");
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -85,27 +91,62 @@ test("aligns workspace names with session titles in the sidebar gutter", async (
 
   try {
     const window = await harness.firstWindow();
-
     await waitForWorkspaceByPath(window, workspacePath);
-    await expect(window.getByTestId("workspace-list")).toContainText(basename(workspacePath));
-    await createSessionViaIpc(window, workspacePath, "Aligned session");
-    await chooseThreadGrouping(window, "workspace");
+    await createSessionViaIpc(window, workspacePath, "Alpha session");
+    await createSessionViaIpc(window, workspacePath, "Bravo session");
 
-    const workspaceName = window.locator(".workspace-row__name").first();
-    const sessionTitle = window.locator(".session-row__title", {
-      hasText: "Aligned session",
-    });
+    await window.getByTestId("topbar-sessions").click();
+    const palette = window.getByTestId("command-palette");
+    await expect(palette.getByRole("option")).toHaveCount(2);
+    await window.getByTestId("command-palette-input").fill("alpha");
+    await expect(palette.getByRole("option")).toHaveCount(1);
+    await palette.getByRole("option").first().click();
+    await expect(window.locator(".chat-header__title")).toHaveText("Alpha session");
 
-    await expect(workspaceName).toBeVisible();
-    await expect(sessionTitle).toBeVisible();
+    await window.getByTestId("thread-header-menu").click();
+    await window.getByRole("button", { name: /Archive session/ }).click();
+    await expect
+      .poll(async () =>
+        (await getDesktopState(window)).workspaces
+          .flatMap((workspace) => workspace.sessions)
+          .some((session) => session.title === "Alpha session" && session.archivedAt),
+      )
+      .toBe(true);
 
-    const [workspaceBox, sessionBox] = await Promise.all([
-      workspaceName.boundingBox(),
-      sessionTitle.boundingBox(),
-    ]);
-    expect(workspaceBox).not.toBeNull();
-    expect(sessionBox).not.toBeNull();
-    expect(Math.abs((workspaceBox?.x ?? 0) - (sessionBox?.x ?? 0))).toBeLessThanOrEqual(1);
+    await window.getByTestId("topbar-sessions").click();
+    await palette.getByRole("tab", { name: "Archived" }).click();
+    await palette.getByRole("option", { name: /Alpha session/ }).click();
+    await expect
+      .poll(async () =>
+        (await getDesktopState(window)).workspaces
+          .flatMap((workspace) => workspace.sessions)
+          .some((session) => session.title === "Alpha session" && !session.archivedAt),
+      )
+      .toBe(true);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Settings holds Scheduled tasks and the Router", async () => {
+  const userDataDir = await makeUserDataDir();
+  const harness = await launchDesktop(userDataDir, { testMode: "background" });
+
+  try {
+    const window = await harness.firstWindow();
+    await window.getByTestId("topbar-settings").click();
+    await expect(window.getByTestId("settings-surface")).toBeVisible();
+
+    await window.getByRole("button", { name: "Scheduled tasks" }).click();
+    await expect(window.getByTestId("scheduled-surface")).toBeVisible();
+
+    await window.getByRole("button", { name: "Router" }).click();
+    await expect(window.getByTestId("settings-surface")).toBeVisible();
+    // Tests run without the Laya helper, so routing uses heuristics.
+    await expect(window.getByTestId("router-laya-status")).toContainText("Unavailable");
+
+    await window.getByRole("button", { name: "Back to app" }).click();
+    await expect(window.getByLabel("New session prompt")).toBeVisible();
   } finally {
     await harness.close();
   }

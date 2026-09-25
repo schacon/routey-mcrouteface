@@ -365,6 +365,10 @@ function buildDesktopLaunchEnv(
       ? { PI_APP_NOTIFICATION_LOG_PATH: options.notificationLogPath }
       : {}),
     PI_APP_OPEN_DEVTOOLS: "0",
+    // Routing reads no real transcripts, and a routed new session starts in the
+    // test's first workspace instead of ~/routey-mcrouteface.
+    ROUTEY_HOME: `${userDataDir}-routey-home`,
+    ROUTEY_SCRATCH_DIRECTORY: options.initialWorkspaces?.[0] ?? `${userDataDir}-routey-scratch`,
     ...(options.envOverrides ?? {}),
   };
   for (const [key, value] of Object.entries(options.envOverrides ?? {})) {
@@ -1644,8 +1648,24 @@ export async function selectSidePanel(
   await expect(existing).toHaveAttribute("aria-selected", "true");
 }
 
+/** Opens a session through the Sessions modal, the way a user switches back to one. */
 export async function clickSession(window: Page, sessionTitle: string): Promise<void> {
-  await window.locator(".session-row__select", { hasText: sessionTitle }).click();
+  await window.getByTestId("topbar-sessions").click();
+  const palette = window.getByTestId("command-palette");
+  await expect(palette).toBeVisible({ timeout: 15_000 });
+  await window.getByTestId("command-palette-input").fill(sessionTitle);
+  await palette.getByRole("option", { name: new RegExp(escapeRegExp(sessionTitle)) }).first().click();
+  await expect(palette).toBeHidden();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** An opened folder is registered for routing; the New session box needs no picker. */
+export async function expectNewThreadWorkspace(window: Page, workspacePath: string): Promise<void> {
+  await waitForWorkspaceByPath(window, workspacePath);
+  await expect(window.getByTestId("new-thread-composer")).toBeVisible({ timeout: 15_000 });
 }
 
 export async function openNewThread(window: Page): Promise<void> {
@@ -1653,19 +1673,10 @@ export async function openNewThread(window: Page): Promise<void> {
   if (await composer.isVisible().catch(() => false)) {
     return;
   }
-  const button = window
-    .locator(".sidebar")
-    .getByRole("button", { name: "New thread", exact: true });
+  const button = window.getByTestId("topbar-new-session");
   await expect(button).toBeVisible({ timeout: 15_000 });
-  await expect(button).toBeEnabled({ timeout: 15_000 });
   await button.click();
   await expect(composer).toBeVisible({ timeout: 15_000 });
-}
-
-export async function expectNewThreadWorkspace(window: Page, workspacePath: string): Promise<void> {
-  const workspace = await waitForWorkspaceByPath(window, workspacePath);
-  await expect(window.getByTestId("new-thread-composer")).toBeVisible({ timeout: 15_000 });
-  await expect(window.locator(".new-thread__workspace")).toHaveValue(workspace.id);
 }
 
 export async function startThreadFromSurface(
@@ -1677,19 +1688,17 @@ export async function startThreadFromSurface(
   } = {},
 ): Promise<void> {
   const { environment = "local", prompt = "Start thread", workspaceName } = options;
+  // The New session box has no workspace or environment picker; the router
+  // decides. A test that needs a specific checkout starts it directly.
+  if (workspaceName || environment === "worktree") {
+    await startThreadViaIpc(window, { environment, prompt, ...(workspaceName ? { workspaceName } : {}) });
+    return;
+  }
 
   await openNewThread(window);
-  if (workspaceName) {
-    await window.locator(".new-thread__workspace").selectOption({ label: workspaceName });
-  }
-  if (environment === "worktree") {
-    await window.getByRole("button", { name: "Worktree", exact: true }).click();
-  } else {
-    await window.getByRole("button", { name: "Local", exact: true }).click();
-  }
-  const startButton = window.getByRole("button", { name: "Start thread" });
+  const startButton = window.getByRole("button", { name: "Start session" });
   if (prompt) {
-    await window.getByLabel("New thread prompt").fill(prompt);
+    await window.getByLabel("New session prompt").fill(prompt);
   }
   await expect(startButton).toBeEnabled({ timeout: 15_000 });
   await startButton.click();
@@ -1827,50 +1836,6 @@ export async function createNamedThread(
   await expect(composer).toBeFocused({ timeout: 15_000 });
 }
 
-export async function chooseThreadGrouping(
-  window: Page,
-  grouping: "time" | "workspace",
-): Promise<void> {
-  const label = grouping === "time" ? "Time" : "Workspace";
-  await window.getByRole("button", { name: "Customize Sidebar" }).click();
-  await window.getByRole("menuitem", { name: "Grouping" }).click();
-  await window.getByRole("menuitemradio", { name: label, exact: true }).click();
-  await expectThreadGrouping(window, grouping);
-}
-
-export async function expectThreadGrouping(
-  window: Page,
-  grouping: "time" | "workspace",
-): Promise<void> {
-  const label = grouping === "time" ? "Time" : "Workspace";
-  await window.getByRole("button", { name: "Customize Sidebar" }).click();
-  await window.getByRole("menuitem", { name: "Grouping" }).click();
-  await expect(window.getByRole("menuitemradio", { name: label, exact: true })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  await expectCompactGroupingMenu(window);
-  await window.keyboard.press("Escape");
-  await expect(window.getByRole("menu", { name: "Customize Sidebar" })).toBeHidden();
-}
-
-async function expectCompactGroupingMenu(window: Page): Promise<void> {
-  const viewportWidth = await window.evaluate(() => document.documentElement.clientWidth);
-  const submenu = window.getByRole("menu", { name: "Grouping" });
-  const submenuBox = await submenu.boundingBox();
-  const timeBox = await window
-    .getByRole("menuitemradio", { name: "Time", exact: true })
-    .boundingBox();
-  expect(submenuBox, "Grouping submenu should be visible").not.toBeNull();
-  expect(timeBox, "Time option should be visible").not.toBeNull();
-  expect(
-    submenuBox!.width,
-    `Grouping submenu is ${submenuBox!.width}px in a ${viewportWidth}px window`,
-  ).toBeLessThan(viewportWidth / 2);
-  expect(submenuBox!.width).toBeLessThan(240);
-  expect(timeBox!.width).toBeGreaterThan(submenuBox!.width * 0.7);
-}
-
 export async function createSessionViaIpc(
   window: Page,
   workspaceIdOrPath: string,
@@ -1901,9 +1866,19 @@ export async function createSessionViaIpc(
     { workspaceTarget: workspaceIdOrPath, targetTitle: title },
   );
 
-  await expect(window.locator(".session-row__select", { hasText: title })).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect
+    .poll(
+      () =>
+        window.evaluate(
+          async (targetTitle) =>
+            (await globalThis.window.piApp?.getState())?.workspaces.some((workspace) =>
+              workspace.sessions.some((session) => session.title === targetTitle),
+            ) ?? false,
+          title,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 }
 
 export const HYDRATE_TEST_SENTINEL = "hydrate-test-sentinel-token=/private/secret-path";

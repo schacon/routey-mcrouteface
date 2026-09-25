@@ -11,7 +11,13 @@ import {
 import { readJsonWithBackup, writeFileAtomicQueued } from "../persistence/atomic-file-write";
 import type { AvailableModel } from "./route-policy";
 
-export const DEFAULT_SCRATCH_DIRECTORY = join(homedir(), "routey-mcrouteface");
+/** The home the router reads transcripts from; tests point it at an empty folder. */
+export function routeyHome(): string {
+  return process.env.ROUTEY_HOME?.trim() || homedir();
+}
+
+export const DEFAULT_SCRATCH_DIRECTORY =
+  process.env.ROUTEY_SCRATCH_DIRECTORY?.trim() || join(routeyHome(), "routey-mcrouteface");
 
 /** Providers whose models are frontier-class; everything else remote is "hosted". */
 const FRONTIER_PROVIDERS = new Set([
