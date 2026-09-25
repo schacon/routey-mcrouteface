@@ -89,6 +89,13 @@ pnpm exec playwright test -c apps/desktop/playwright.config.ts \
   apps/desktop/tests/live/routey-routing.spec.ts
 ```
 
+Routing quality is scored against 50 labeled prompts. Heuristics-only runs in the unit lane
+with a floor; add the Laya helper to score Laya too:
+
+```bash
+ROUTEY_LAYA_HELPER=apps/desktop/build/native/routey-laya-helper pnpm eval:router
+```
+
 Desktop changes should be verified on the real Electron app, not only by unit tests.
 
 ## Architecture

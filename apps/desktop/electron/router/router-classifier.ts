@@ -1,0 +1,90 @@
+import type {
+  RouterCue,
+  RouterQuestionAnswer,
+  RouterSignals,
+  RouterSource,
+} from "../../contracts/router";
+import type { LayaClassifier, LayaWireAnswer } from "./laya-client";
+import {
+  NONE_OF_THESE_PROJECTS,
+  ROUTER_QUESTIONS,
+  combineSignals,
+  layaState,
+  pickTaskKind,
+  projectQuestion,
+  toQuestionAnswers,
+} from "./router-signals";
+
+export interface Classification {
+  readonly source: RouterSource;
+  readonly signals: RouterSignals;
+  readonly cues: readonly RouterCue[];
+  readonly answers: readonly RouterQuestionAnswer[];
+  readonly chosenProject?: string;
+}
+
+export interface ClassifyOptions {
+  /** Known project paths, most recently used first. */
+  readonly projects: readonly string[];
+  /** Only a new session picks a directory. */
+  readonly firstTurn: boolean;
+}
+
+const PROJECT_CANDIDATE_LIMIT = 8;
+
+/**
+ * Laya's answers plus deterministic cues for one prompt. When Laya is
+ * unavailable the cues alone decide and the source says why. Shared by the
+ * router and the accuracy eval so both measure the same path.
+ */
+export async function classifyPrompt(
+  laya: LayaClassifier,
+  prompt: string,
+  { projects, firstTurn }: ClassifyOptions,
+): Promise<Classification> {
+  let answers: readonly LayaWireAnswer[] = [];
+  let source: RouterSource;
+  try {
+    const result = await laya.answer(layaState(prompt), ROUTER_QUESTIONS);
+    answers = result.answers;
+    source = { kind: "laya", latencyMs: result.latencyMs };
+  } catch (error) {
+    source = { kind: "heuristic", reason: error instanceof Error ? error.message : String(error) };
+  }
+  const { signals, cues } = combineSignals({ prompt, answers, knownProjects: projects });
+  const questionAnswers = [...toQuestionAnswers(ROUTER_QUESTIONS, answers)];
+
+  // Ask Laya for a project only when the prompt seems to need one it does not name.
+  let chosenProject: string | undefined;
+  if (
+    firstTurn &&
+    source.kind === "laya" &&
+    !signals.mentionedProject &&
+    pickTaskKind(signals, cues) === "coding" &&
+    signals.needsProject >= 0.6
+  ) {
+    const candidates = projects.slice(0, PROJECT_CANDIDATE_LIMIT);
+    if (candidates.length > 0) {
+      const question = projectQuestion(candidates);
+      try {
+        const answer = (await laya.answer(layaState(prompt), [question])).answers[0];
+        if (answer) {
+          questionAnswers.push(...toQuestionAnswers([question], [answer]));
+          const index = answer.labels.indexOf(answer.selected);
+          if (answer.selected !== NONE_OF_THESE_PROJECTS && index >= 0) {
+            chosenProject = candidates[index];
+          }
+        }
+      } catch {
+        // The kind answers already landed; keep going without a project pick.
+      }
+    }
+  }
+  return {
+    source,
+    signals,
+    cues,
+    answers: questionAnswers,
+    ...(chosenProject ? { chosenProject } : {}),
+  };
+}

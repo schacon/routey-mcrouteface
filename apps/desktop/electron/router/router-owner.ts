@@ -7,27 +7,16 @@ import type {
   RouteDecision,
   RouteMode,
   RouterConfig,
-  RouterCue,
   RouterDecisionRecord,
   RouterOverview,
-  RouterQuestionAnswer,
   RouterSessionInfo,
-  RouterSignals,
-  RouterSource,
 } from "../../contracts/router";
 import { DecisionLogStore } from "./decision-log-store";
-import type { LayaClassifier, LayaWireAnswer } from "./laya-client";
+import type { LayaClassifier } from "./laya-client";
 import { resolveRouteDecision, type AvailableModel } from "./route-policy";
 import { DEFAULT_SCRATCH_DIRECTORY, RouterConfigStore } from "./router-config-store";
-import {
-  NONE_OF_THESE_PROJECTS,
-  ROUTER_QUESTIONS,
-  combineSignals,
-  layaState,
-  pickTaskKind,
-  projectQuestion,
-  toQuestionAnswers,
-} from "./router-signals";
+import { pickTaskKind } from "./router-signals";
+import { classifyPrompt, type Classification } from "./router-classifier";
 import { discoverProjects, type DiscoveryRoots } from "./workspace-discovery";
 
 export interface RoutableModels {
@@ -58,16 +47,7 @@ export interface PendingRoute {
 }
 
 const DISCOVERY_TTL_MS = 10 * 60 * 1000;
-const PROJECT_CANDIDATE_LIMIT = 8;
 const PURPOSE_REFRESH_EVERY = 5;
-
-interface Classification {
-  readonly source: RouterSource;
-  readonly signals: RouterSignals;
-  readonly cues: readonly RouterCue[];
-  readonly answers: readonly RouterQuestionAnswer[];
-  readonly chosenProject?: string;
-}
 
 /**
  * Classifies every user turn and turns the result into a model, thinking level,
@@ -141,7 +121,7 @@ export class RouterOwner {
   /** Decide a new session's first turn, including where it runs. */
   async decideFirstTurn(prompt: string, hasImages: boolean): Promise<PendingRoute> {
     const config = await this.config();
-    const classification = await this.classify(prompt, config, true);
+    const classification = await this.classify(prompt, true);
     const decision = await this.resolve(prompt, classification, config, hasImages, undefined);
     if (decision.cwd === config.scratchDirectory) {
       await mkdir(config.scratchDirectory, { recursive: true });
@@ -183,7 +163,7 @@ export class RouterOwner {
       record = pending.record;
     } else {
       const config = await this.config();
-      const classification = await this.classify(prompt, config, false);
+      const classification = await this.classify(prompt, false);
       const decision = await this.resolve(prompt, classification, config, hasImages, sessionCwd);
       const mentioned = classification.signals.mentionedProject;
       record = {
@@ -212,69 +192,12 @@ export class RouterOwner {
     this.laya.dispose();
   }
 
-  private async classify(
-    prompt: string,
-    config: RouterConfig,
-    firstTurn: boolean,
-  ): Promise<Classification> {
+  private async classify(prompt: string, firstTurn: boolean): Promise<Classification> {
     const projects = await this.projects();
-    const knownProjects = projects.map((project) => project.path);
-    let answers: readonly LayaWireAnswer[] = [];
-    let source: RouterSource;
-    let questions = [...ROUTER_QUESTIONS];
-    try {
-      const result = await this.laya.answer(layaState(prompt), ROUTER_QUESTIONS);
-      answers = result.answers;
-      source = { kind: "laya", latencyMs: result.latencyMs };
-    } catch (error) {
-      source = {
-        kind: "heuristic",
-        reason: error instanceof Error ? error.message : String(error),
-      };
-    }
-    const { signals, cues } = combineSignals({ prompt, answers, knownProjects });
-    const questionAnswers = [...toQuestionAnswers(questions, answers)];
-
-    // Only a new session picks a directory, and only asks Laya when the prompt
-    // seems to need a project it does not name.
-    let chosenProject: string | undefined;
-    const kind = pickTaskKind(signals, cues);
-    if (
-      firstTurn &&
-      source.kind === "laya" &&
-      !signals.mentionedProject &&
-      kind === "coding" &&
-      signals.needsProject >= 0.6
-    ) {
-      const candidates = projects
-        .filter((project) => !config.excludedProjects.includes(project.path))
-        .slice(0, PROJECT_CANDIDATE_LIMIT)
-        .map((project) => project.path);
-      if (candidates.length > 0) {
-        const question = projectQuestion(candidates);
-        questions = [...questions, question];
-        try {
-          const result = await this.laya.answer(layaState(prompt), [question]);
-          const answer = result.answers[0];
-          if (answer) {
-            questionAnswers.push(...toQuestionAnswers([question], [answer]));
-            const index = answer.labels.indexOf(answer.selected);
-            if (answer.selected !== NONE_OF_THESE_PROJECTS && index >= 0) {
-              chosenProject = candidates[index];
-            }
-          }
-        } catch {
-          // The kind answers already landed; keep going without a project pick.
-        }
-      }
-    }
-    return {
-      source,
-      signals,
-      cues,
-      answers: questionAnswers,
-      ...(chosenProject ? { chosenProject } : {}),
-    };
+    return classifyPrompt(this.laya, prompt, {
+      projects: projects.map((project) => project.path),
+      firstTurn,
+    });
   }
 
   private async resolve(
