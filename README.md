@@ -1,207 +1,127 @@
-# pi-gui
+# Routey McRouteface
 
-The desktop app for the [pi](https://github.com/earendil-works/pi) coding agent.
+A desktop app for working with AI agents without picking a model, a folder, or an effort
+level first. You type what you want; a small on-device decision model reads the prompt and
+routes every turn: which project to work in, which model to use (local, hosted or frontier),
+how hard to think, and whether the agent may change files.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/minghinmatthewlam/pi-gui?include_prereleases&label=release)](https://github.com/minghinmatthewlam/pi-gui/releases)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](#install)
+Routey is built on the [pi](https://github.com/earendil-works/pi) agent runtime and started as
+a fork of [pi-gui](https://github.com/minghinmatthewlam/pi-gui).
 
-Run agents in parallel threads, each in its own git worktree if you want one. Review every
-change, run the tests in a real terminal, and ship without leaving the window. pi-gui is a
-desktop shell around [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent),
-not a separate agent: sessions, models, auth and tools all run through pi itself, so anything
-you set up with the pi CLI carries over.
+> **Status:** early. Milestone 1 (the new shell and single-model routing) works on macOS in
+> development builds. There are no packaged releases yet. See [the plan](docs/routey-plan.md)
+> and [TODO.md](TODO.md).
 
-[![An agent in pi-gui fixing a bug, running the tests, then the change open in the review tab](./apps/website/public/media/hero.gif)](./apps/website/public/media/hero.mp4)
+## How it works
 
-<sub>A real run: the agent fixes a bug, adds a test and runs it, then the change opens for review. ([Watch in full quality](./apps/website/public/media/hero.mp4))</sub>
+1. **You type.** A new session is only a text box: no model picker, no workspace picker.
+2. **Laya decides.** [Laya](https://github.com/FluidInference/FluidUse), a 322M-parameter
+   decision model running on the Apple Neural Engine, answers a set of typed questions about
+   the prompt in about 20 ms: is this coding, a general question, a request about the app
+   itself, writing or research? How hard is it? Does it need a project? Should it only read?
+   Keyword cues (a named project, code vocabulary, "from now on…") can raise those answers.
+3. **The router picks.**
+   - **Project:** on a session's first turn, a project the prompt names or Laya's best match
+     from folders you have used with Claude Code, Codex, pi or Cursor. Only each transcript's
+     working directory is read. Anything else runs in `~/routey-mcrouteface`.
+   - **Model:** a tier from the task and its difficulty, then the first model in your roster
+     tagged for that kind of task, falling back across tiers when one is empty.
+   - **Thinking level** and **mode**: execute (edit and run), plan (read-only) or answer (no
+     tools).
+4. **Every turn is routed again.** A follow-up that needs more reasoning can move to a stronger
+   model mid-session; a quick question can drop back to a local one.
+5. **Every decision is visible.** The side panel's **Inspector** shows each turn's model, mode,
+   the reasons, the cues and Laya's probabilities.
 
-## Features
+## The app
 
-### Run agents side by side
+- **New session, Sessions, Settings** sit at the top right. Sessions opens a searchable list of
+  earlier sessions, grouped by recency, with archived ones a tab away.
+- **Info** (the default side panel) shows what the session is for, where it works and which
+  models it has used. A local model writes the purpose summary.
+- **Inspector** explains every routing decision.
+- **GitButler** shows `but status` for the session's checkout: stacks, branches, commits and
+  uncommitted changes.
+- **Files** and **Terminal** work as in pi-gui.
+- **Settings → Router** edits the model roster (tier, order, what each model is good for),
+  excludes projects, and shows whether Laya is loaded. Scheduled tasks, skills and extensions
+  live in Settings too.
 
-Every task gets its own thread. Start it in your checkout or in a fresh git worktree, then
-start the next one while it works. The sidebar shows what is running, what finished and what
-needs you. Pin threads, group them by time or workspace, and archive the ones you are done with.
+Sessions, credentials, skills and extensions are pi's own, so they are shared with the pi CLI.
 
-<img src="./apps/website/public/media/threads.webp" alt="pi-gui running an agent thread while two other threads work in the sidebar" width="720">
+## Requirements
 
-### Review every change before it lands
-
-The Review tab shows exactly what the agent touched. Compare uncommitted work, a branch
-against its base, or a single turn, and stage or unstage it file by file.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./apps/website/public/media/review-dark.webp">
-  <img src="./apps/website/public/media/review-light.webp" alt="The Review tab showing the diff an agent made to src/price.js" width="720">
-</picture>
-
-### Terminal and files in the same window
-
-The workbench beside the conversation holds a real terminal, a file explorer and editor,
-the review tab, your worktrees, and tabs from desktop extensions. Each task keeps its own layout.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./apps/website/public/media/terminal-dark.webp">
-  <img src="./apps/website/public/media/terminal-light.webp" alt="The integrated terminal running the test suite next to the thread" width="720">
-</picture>
-
-### Everything is a keystroke away
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./apps/website/public/media/palette-dark.webp">
-  <img src="./apps/website/public/media/palette-light.webp" alt="The command palette listing recent chats and actions" width="720">
-</picture>
-
-| Shortcut (macOS; use Ctrl on Linux and Windows)    | Does                                  |
-| -------------------------------------------------- | ------------------------------------- |
-| <kbd>⌘</kbd> <kbd>K</kbd>                          | Search chats, workspaces and actions  |
-| <kbd>⌘</kbd> <kbd>P</kbd>                          | Open any file in the current checkout |
-| <kbd>Ctrl</kbd> <kbd>Tab</kbd>                     | Switch between recent threads         |
-| <kbd>⌘</kbd> <kbd>1</kbd> to <kbd>9</kbd>          | Jump to a thread in the sidebar       |
-| <kbd>⌘</kbd> <kbd>J</kbd>                          | Toggle the terminal                   |
-| <kbd>⌘</kbd> <kbd>R</kbd>                          | Toggle the Review tab                 |
-| <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>B</kbd>             | Show or hide the workbench            |
-| <kbd>Enter</kbd> while a run is going              | Queue a follow-up                     |
-| <kbd>⌘</kbd> <kbd>Enter</kbd> while a run is going | Steer the current run                 |
-
-### And the rest
-
-- **Scheduled tasks.** Have pi rerun a prompt on a schedule, such as a weekly dependency
-  check, while the app is open.
-- **Skills and extensions.** Turn pi skills and extensions on and off, try them from the
-  composer, and give desktop extensions their own workbench tabs.
-- **Any provider.** Sign in with OAuth, paste an API key, or point at a custom endpoint.
-  Pick the model and thinking level per thread.
-- **Fork and rewind.** Fork a thread from any message into the same checkout or a new
-  worktree, and move around the session tree with `/tree`.
-- **Composer.** `@`-mention files, and paste or drop images into the prompt.
-- **Threads that run threads.** An agent can start, read and message other threads, which
-  show up in the sidebar like any other.
-- **Notifications.** Get told when a background thread finishes, fails or needs you.
-- **Themes.** Light and dark, plus presets like Catppuccin, Tokyo Night, Nord, Dracula,
-  Gruvbox and GitHub.
-
-## Install
-
-pi-gui is in public beta for macOS (Apple Silicon), Linux (x64) and Windows (x64).
-
-Download the latest `.dmg` (macOS), `.AppImage` or `.deb` (Linux), or `.exe` (Windows) from the
-[Releases page](https://github.com/minghinmatthewlam/pi-gui/releases).
-
-- **macOS:** drag `pi-gui.app` into Applications. Releases are signed and notarized.
-- **Linux:** make the AppImage executable and run it, or install the `.deb`.
-- **Windows:** run the setup `.exe`, or use the portable `.exe`. Builds are not code-signed
-  yet, so SmartScreen may ask you to confirm.
-
-On macOS you can also use Homebrew:
-
-```bash
-brew tap minghinmatthewlam/tap
-brew install --cask pi-gui
-```
-
-Update with `brew upgrade --cask pi-gui`. During the beta, a Homebrew upgrade may ask you to
-re-confirm macOS permissions or Dock placement. Other installs tell you when a new release is
-out and update from the Releases page.
-
-Building from source is for contributors; see [Development](#development).
-
-## Quickstart
-
-1. Install pi-gui and open it.
-2. Open **Settings → Providers** and connect a model provider (OAuth or API key).
-3. Add a workspace: a local project folder.
-4. Click **New thread**, choose **Local** or **Worktree**, and send your first prompt.
-
-pi-gui reads and writes pi's own session files and settings, so threads, credentials and
-skills are shared with the pi CLI.
-
-## Architecture
-
-pi-gui is an Electron app with a tight main, preload and renderer boundary, on top of the pi
-runtime:
-
-- **Renderer** (`apps/desktop/src`): the React UI, including the timeline, composer,
-  workbench and settings. It talks to the main process only through a typed IPC surface.
-- **Preload** (`apps/desktop/electron/preload.ts`): the narrow bridge that exposes that IPC
-  surface. The renderer gets no broad Node access.
-- **Main** (`apps/desktop/electron`): windows, session supervision, worktrees, terminal PTYs,
-  scheduled tasks, notifications and persistence.
-- **`packages/pi-sdk-driver`**: a thin adapter over `@earendil-works/pi-coding-agent`. It stays
-  close to upstream pi and does not fork or reimplement runtime behavior.
-- **Session files are the source of truth.** pi stores each session as a JSONL transcript on
-  disk, and pi-gui reads those files rather than keeping its own copy.
-
-See [docs/architecture.md](docs/architecture.md) for ownership and boundaries.
+- macOS on Apple silicon for Laya. Elsewhere, and whenever Laya is unavailable, routing falls
+  back to keyword cues and the Inspector says so.
+- Laya's Core ML weights in `~/Library/Application Support/FluidUse/Models/laya-coreml`
+  (the 128- and 512-token buckets and `tokenizer.json`). Routey never downloads them on its
+  own yet.
+- At least one model provider configured in pi: an [Ollama](https://ollama.com) endpoint for
+  local models, and hosted or frontier providers via OAuth or API key.
+- The [GitButler CLI](https://gitbutler.com) (`but`) for the GitButler panel.
 
 ## Development
 
-Requires Node 22.19 or newer (CI runs Node 22) and [pnpm](https://pnpm.io) through `corepack`.
-`pnpm-lock.yaml` is the authoritative lockfile.
+Requires Node 22.19 or newer (below 26), [pnpm](https://pnpm.io) through `corepack`, and Xcode
+command-line tools with Swift 6 to build the Laya helper.
 
 ```bash
 corepack enable
 pnpm install
+pnpm --filter @pi-gui/desktop run build   # also builds build/native/routey-laya-helper
+pnpm dev                                  # run the desktop app with hot reload
 ```
 
-Common commands, from the repo root:
+Other commands, from the repo root:
 
 ```bash
-pnpm dev            # run the desktop app with hot reload
-pnpm check          # CI baseline: format, lint, renderer boundaries, types, guard and driver tests
-pnpm build          # build the desktop app and the website
-pnpm typecheck      # type-check all workspaces
-pnpm lint           # correctness rules plus typed promise and unsafe-any checks
-pnpm format         # apply the shared formatter
-pnpm test           # each workspace's tests (desktop runs the core E2E lane)
-pnpm marketing:media  # re-record the README and website media from a real agent run
+pnpm check           # format, lint, architecture guards, types, guard and driver tests
+pnpm test:desktop-unit
+pnpm --filter @pi-gui/desktop run test:e2e:core   # drives the real Electron app
 ```
 
-`pnpm check` is the shared local and CI baseline. It does not launch Electron or replace the
-desktop, website-build and package CI jobs; see [docs/ci-baseline.md](docs/ci-baseline.md).
-
-Desktop end-to-end tests drive the real Electron app with Playwright, in lanes. `pnpm test`
-runs the `core` lane; to run everything:
+A live end-to-end proof of routing runs against a local Ollama:
 
 ```bash
-pnpm --filter @pi-gui/desktop run test:e2e:all   # core + live + native
+ROUTEY_LIVE_OLLAMA=1 \
+ROUTEY_LAYA_HELPER=apps/desktop/build/native/routey-laya-helper \
+pnpm exec playwright test -c apps/desktop/playwright.config.ts \
+  apps/desktop/tests/live/routey-routing.spec.ts
 ```
 
-See [`apps/desktop/README.md`](./apps/desktop/README.md) for the lanes, packaging on each
-platform, and how the product media is recorded.
+Desktop changes should be verified on the real Electron app, not only by unit tests.
 
-## Repository layout
+## Architecture
 
-- `apps/desktop`: the Electron app (renderer, main and preload).
-- `apps/website`: [pi-gui.com](https://www.pi-gui.com).
-- `packages/pi-sdk-driver`: the adapter over `@earendil-works/pi-coding-agent`.
-- `packages/session-driver`: shared session driver types.
-- `packages/catalogs`: workspace and session catalog state.
-- `packages/extension-ui`: helpers for building desktop extension views.
-- `examples/desktop-extensions`: example extensions with their own workbench tabs.
-- `video`: the Remotion showcase video.
-- `docs`: architecture, CI and design notes.
-- `.agents/skills`: checked-in agent skills, including desktop verification.
+Routey keeps pi-gui's Electron structure: a React renderer, a narrow preload bridge, and a main
+process that owns sessions, persistence and platform access, over a thin adapter
+(`packages/pi-sdk-driver`) around `@earendil-works/pi-coding-agent`. Routing adds:
 
-## Contributing
+- `apps/desktop/native/laya-helper`: a SwiftPM executable over FluidUse's `LayaManager`,
+  spoken to over JSON lines.
+- `apps/desktop/electron/router`: the Laya client, the questions and cues, the routing policy,
+  project discovery, the model roster (`router-config.json`), the per-session decision log
+  (`router-decisions/`) and the pi extension that enforces plan and answer modes.
+- `apps/desktop/src/features/workbench`: the Info, Inspector and GitButler panels.
 
-Contributions are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, verification
-expectations and the desktop test lanes. Desktop changes should be verified on the real
-Electron app, not only by unit tests.
+See [docs/architecture.md](docs/architecture.md) for ownership and boundaries.
 
-## Computer use
+## Roadmap
 
-Native computer use is not built into pi-gui. Desktop and browser control is available
-separately through the standalone
-[`computer-use-mcp`](https://github.com/minghinmatthewlam/computer-use-mcp) server, which any
-MCP-capable agent can use.
+- **Fan-out:** split a prompt across several models and combine their answers.
+- **First run:** set up Ollama, download local models suited to what you do, connect hosted and
+  frontier providers, and fill the roster.
+- **Settings by chat:** change the roster, projects and schedules by asking, instead of through
+  the Settings page.
+- A native Swift app, and removal of the git code that GitButler replaced.
 
 ## Acknowledgements
 
-Built on [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
-and the [pi](https://github.com/earendil-works/pi) runtime and ecosystem.
+Routey is a fork of [pi-gui](https://github.com/minghinmatthewlam/pi-gui) by Matthew Lam, built
+on [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
+and the [pi](https://github.com/earendil-works/pi) runtime. Routing uses Laya through
+[FluidUse](https://github.com/FluidInference/FluidUse).
 
 ## License
 
-[MIT](./LICENSE) © Matthew Lam
+[MIT](./LICENSE). Original pi-gui code © Matthew Lam.

@@ -7,19 +7,12 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 
 async function main() {
-  const [readme, siteMetadata, websitePage] = await Promise.all([
-    readFile(path.join(repoRoot, "README.md"), "utf8"),
+  // The README describes Routey, which has no packaged releases yet, so only the
+  // pi-gui website's install copy is checked here.
+  const [siteMetadata, websitePage] = await Promise.all([
     readFile(path.join(repoRoot, "apps", "website", "app", "site.ts"), "utf8"),
     readFile(path.join(repoRoot, "apps", "website", "app", "page.tsx"), "utf8"),
   ]);
-
-  assert.match(
-    readme,
-    /Download the latest `\.dmg` \(macOS\), `\.AppImage` or `\.deb` \(Linux\), or `\.exe` \(Windows\) from the\s+\[Releases page\]/,
-  );
-  assert.match(readme, /brew install --cask pi-gui/);
-  assert.match(readme, /brew upgrade --cask pi-gui/);
-  assert.doesNotMatch(readme, /Homebrew installation will be published/);
 
   assert.match(
     siteMetadata,
@@ -33,7 +26,7 @@ async function main() {
   assert.match(websitePage, /Building from source is for contributors/);
   assert.doesNotMatch(websitePage, /Run the beta from source/);
 
-  process.stdout.write("Install copy is aligned across README and website.\n");
+  process.stdout.write("Website install copy is aligned.\n");
 }
 
 main().catch((error) => {
