@@ -36,8 +36,12 @@ See [Vercel's build configuration](https://vercel.com/docs/builds/configure-a-bu
 
 - `public/index.html`: page content, metadata, and default demo state.
 - `public/styles.css`: layout, colors, typography, and responsive styles.
-- `public/demo.js`: the three example routes. Keep the default in HTML in sync.
-- `public/favicon.svg`: Routey's route-and-destination mark.
+- `public/demo.js`: the hero routing animation and the four “tap a prompt” verdicts.
+  Keep the first verdict in HTML in sync.
+- `public/favicon.svg`: Routey's googly-eyed mascot, also used as the logo.
+
+The layout follows the “Routey Landing” design in claude.ai/design. Fonts load from
+Google Fonts (Bricolage Grotesque and JetBrains Mono).
 
 From the repository root, with repository development dependencies installed:
 
@@ -47,6 +51,7 @@ node --check website/public/demo.js
 pnpm exec tsc --allowJs --checkJs --noEmit --target ES2022 --lib DOM,DOM.Iterable,ES2022 --skipLibCheck website/public/demo.js
 ```
 
-Preview at desktop and mobile sizes. Check all three example buttons, keyboard focus,
-section links, and the expandable questions. With JavaScript disabled, the initial
-example and all content remain visible; example controls are hidden.
+Preview at desktop and mobile sizes. Check that the hero animation cycles through all
+five prompts, all four “tap a prompt” buttons, keyboard focus, and the section links.
+With reduced motion, the hero skips typing and scanning. With JavaScript disabled, the
+first verdict and all content remain visible.

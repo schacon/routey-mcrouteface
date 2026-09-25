@@ -4,3 +4,5 @@
 !public/index.html
 !public/styles.css
 !public/demo.js
+.vercel
+.env*
