@@ -105,7 +105,7 @@ test("the public Electron helper loads through Playwright and the marketing scri
   );
   assert.ifError(result.error);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /adds a workspace to an empty launched app/);
+  assert.match(result.stdout, /an empty app shows only the New session box/);
 
   const { createJiti } = require("jiti");
   const jiti = createJiti(path.join(root, "scripts/jiti-loader-probe.cjs"));

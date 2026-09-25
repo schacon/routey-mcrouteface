@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { launchDesktop } from "../helpers/electron-app";
@@ -52,7 +52,12 @@ test("routes a new session, explains the decision, and shows GitButler status", 
   const harness = await launchDesktop(join(root, "profile"), {
     agentDir,
     scrubProviderEnv: true,
-    envOverrides: helper ? { ROUTEY_LAYA_HELPER: resolve(helper) } : {},
+    // This proof uses the real transcript folders so pi-gui is a known project.
+    envOverrides: {
+      ROUTEY_HOME: homedir(),
+      ROUTEY_SCRATCH_DIRECTORY: undefined,
+      ...(helper ? { ROUTEY_LAYA_HELPER: resolve(helper) } : {}),
+    },
   });
   const shot = (name: string) =>
     window.screenshot({ path: testInfo.outputPath(`${name}.png`) }).then(() => undefined);
@@ -131,6 +136,12 @@ test("routes a new session, explains the decision, and shows GitButler status", 
     await window.getByRole("button", { name: "Scheduled tasks" }).click();
     await expect(window.getByTestId("scheduled-surface")).toBeVisible();
     await shot("07-settings-scheduled");
+
+    // The Router page lists the seeded roster and Laya's state.
+    await window.getByRole("button", { name: "Router" }).click();
+    await expect(window.getByTestId("router-model").first()).toContainText("qwen");
+    if (helper) await expect(window.getByTestId("router-laya-status")).toContainText("Ready");
+    await shot("08-settings-router");
   } finally {
     await harness.close();
   }

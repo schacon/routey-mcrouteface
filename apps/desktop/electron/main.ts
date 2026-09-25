@@ -77,6 +77,7 @@ import type { SessionDriverEvent } from "@pi-gui/session-driver";
 import type { GenerateThreadTitleOptions } from "@pi-gui/pi-sdk-driver";
 import type { SessionRef, WorkspaceRef } from "@pi-gui/session-driver";
 import { LayaProcessClient } from "./router/laya-client";
+import { routeyHome } from "./router/router-config-store";
 import { RouterOwner } from "./router/router-owner";
 import { createRouteyModeExtension } from "./router/routey-mode-extension";
 import { defaultDiscoveryRoots } from "./router/workspace-discovery";
@@ -224,7 +225,7 @@ function createRouter(appStore: DesktopAppStore): RouterOwner {
   return new RouterOwner(
     configuredUserDataDir,
     new LayaProcessClient(layaHelperPath(), () => broadcast(null)),
-    defaultDiscoveryRoots(),
+    defaultDiscoveryRoots(routeyHome()),
     {
       routableModels: (scratchDirectory) => appStore.routableModels(scratchDirectory),
       knownWorkspaces: () =>
