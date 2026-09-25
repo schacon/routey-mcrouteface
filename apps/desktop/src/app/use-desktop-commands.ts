@@ -172,7 +172,7 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
     [desktopCommands.toggleReview]: () => {
       // A chord replayed from the early buffer can also arrive over IPC. Collapse
       // that same-tick pair while preserving a deliberate second press.
-      if (reviewToggleGate.current(performance.now())) toggleWorkbenchTool("changes");
+      if (reviewToggleGate.current(performance.now())) toggleWorkbenchTool("gitbutler");
     },
     [desktopCommands.closeFocusedSurface]: closeFocusedSurface,
     [desktopCommands.toggleSidebar]: openSessions,

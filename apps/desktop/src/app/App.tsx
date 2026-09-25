@@ -12,7 +12,6 @@ import {
 } from "../../contracts/scheduled-tasks";
 import { updateSnapshot, useDesktopAppState } from "./desktop-app-state";
 import { DesktopStartupSurface, toStartupSurfaceState } from "./desktop-recovery";
-import { buildFileWorkbenchContexts } from "./file-workbench-contexts";
 import { useDesktopCommands } from "./use-desktop-commands";
 import { useRunningLabel } from "../features/conversation/hooks/use-running-label";
 import { useTimelineViewport } from "../features/conversation/hooks/use-timeline-viewport";
@@ -21,9 +20,10 @@ import { useTurnChanges } from "../features/conversation/hooks/use-turn-changes"
 import { formatRelativeTime } from "../lib/string-utils";
 import { restoreTopmostDialogFocus } from "../ui/dialog-focus";
 import { ComposerPanel } from "../features/conversation/composer-panel";
-import { DiffPanel } from "../features/workbench/diff-panel";
-import type { DiffPanelFileRequest } from "../features/workbench/diff-panel-types";
 import { FileWorkbench } from "../features/workbench/file-workbench";
+import { GitButlerPanel } from "../features/workbench/gitbutler-panel";
+import { InfoPanel } from "../features/workbench/info-panel";
+import { InspectorPanel } from "../features/workbench/inspector-panel";
 import { useWorkbench } from "../features/workbench/use-workbench";
 import {
   ExtensionViewPanel,
@@ -109,10 +109,6 @@ export default function App() {
   const [dismissedSchemaSkewSessionKeys, setDismissedSchemaSkewSessionKeys] = useState<
     ReadonlySet<string>
   >(() => new Set());
-  const [diffFileRequest, setDiffFileRequest] = useState<{
-    readonly sessionKey: string;
-    readonly request: DiffPanelFileRequest;
-  } | null>(null);
   const [scheduledEditor, setScheduledEditor] = useState<ScheduledEditorState | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const api = window.piApp;
@@ -303,24 +299,6 @@ export default function App() {
   const selectedWorkspaceCommandCompatibility = selectedWorkspace
     ? (snapshot?.extensionCommandCompatibilityByWorkspace[selectedWorkspace.id] ?? [])
     : [];
-  const fileWorkbenchContexts = useMemo(
-    () =>
-      buildFileWorkbenchContexts({
-        workspaces: snapshot?.workspaces ?? [],
-        selectedWorkspace,
-        selectedSessionTitle: selectedExtensionUi?.title || selectedSession?.title,
-        rootWorkspace,
-        activeWorktrees,
-      }),
-    [
-      activeWorktrees,
-      rootWorkspace,
-      selectedExtensionUi?.title,
-      selectedSession?.title,
-      selectedWorkspace,
-      snapshot?.workspaces,
-    ],
-  );
   const selectedExtensionDock = useMemo(
     () => buildExtensionDockModel(selectedExtensionUi),
     [selectedExtensionUi],
@@ -377,20 +355,8 @@ export default function App() {
   const handleViewFileInDiff = useCallback((path: string) => {
     const workspace = selectedWorkspaceRef.current;
     if (!workspace) return;
-    const current = workbenchRef.current;
-    current.setChanges({
-      workspaceId: workspace.id,
-      selectedPath: path,
-      scope: { kind: "uncommitted" },
-    });
-    current.openTool({ kind: "changes" });
-    setDiffFileRequest({
-      sessionKey: selectedSessionKeyRef.current,
-      request: { workspaceId: workspace.id, path, nonce: Date.now() },
-    });
+    void workbenchRef.current.openFile({ workspaceId: workspace.id, path }).catch(() => undefined); // A deleted or unreadable file leaves the panel unchanged.
   }, []);
-  const selectedSessionKeyRef = useRef(selectedSessionKey);
-  selectedSessionKeyRef.current = selectedSessionKey;
   const selectedWorkspaceRef = useRef(selectedWorkspace);
   selectedWorkspaceRef.current = selectedWorkspace;
   // Snapshot ticks replace selectedWorkspace. A new callback identity reparses every
@@ -525,17 +491,7 @@ export default function App() {
     openScheduledEditor: setScheduledEditor,
   });
 
-  const newThread = useNewThreadController({
-    api,
-    snapshot,
-    setSnapshot,
-    rootWorkspace,
-    rootWorkspaceOptions,
-    visibleWorkspaces,
-    selectedWorkspace,
-    openSettings,
-    flushComposerDraft,
-  });
+  const newThread = useNewThreadController({ api, setSnapshot, flushComposerDraft });
 
   const {
     composerAttachments,
@@ -667,7 +623,7 @@ export default function App() {
     hasWorkspace: rootWorkspaceOptions.length > 0,
     selectedRootWorkspaceId,
     selectedThread: selectedThreadActions
-      ? { actions: selectedThreadActions, canSwitchModel: selectedModelOptions.length > 0 }
+      ? { actions: selectedThreadActions, canSwitchModel: false }
       : undefined,
     threadSidebarModel,
     selectThread: (target) => selectThreadRef.current(target),
@@ -686,8 +642,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    const removeWorkspacePickedListener = window.piApp?.onWorkspacePicked?.((workspaceId) => {
-      newThread.setPendingWorkspaceId(workspaceId);
+    const removeWorkspacePickedListener = window.piApp?.onWorkspacePicked?.(() => {
       newThread.resetSurface();
     });
     const removeClipboardImageListener = window.piApp?.onClipboardImagePasted?.(
@@ -742,21 +697,6 @@ export default function App() {
     }
     void updateSnapshot(setSnapshot, () =>
       api.setSessionModel(selectedWorkspace.id, selectedSession.id, provider, modelId),
-    ).catch((error: unknown) => {
-      console.error("[renderer] updateSnapshot failed", error);
-    });
-  };
-
-  const handleSetSessionThinking = (level: string) => {
-    if (!selectedWorkspace || !selectedSession) {
-      return;
-    }
-    void updateSnapshot(setSnapshot, () =>
-      api.setSessionThinkingLevel(
-        selectedWorkspace.id,
-        selectedSession.id,
-        level as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>,
-      ),
     ).catch((error: unknown) => {
       console.error("[renderer] updateSnapshot failed", error);
     });
@@ -925,8 +865,23 @@ export default function App() {
       />
     ) : null;
 
-  const openNewSession = () =>
-    newThread.openSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id);
+  const openNewSession = () => newThread.openSurface();
+  const newSessionView = (
+    <NewThreadView
+      prompt={newThread.prompt}
+      attachments={newThread.attachments}
+      lastError={newThread.composerError}
+      starting={newThread.starting}
+      composerRef={newThread.composerRef}
+      onChangePrompt={newThread.setPrompt}
+      onComposerKeyDown={newThread.handleComposerKeyDown}
+      onComposerPaste={newThread.handleComposerPaste}
+      onComposerDrop={newThread.handleComposerDrop}
+      onAddAttachments={newThread.addAttachments}
+      onRemoveAttachment={newThread.removeAttachment}
+      onSubmit={newThread.startSession}
+    />
+  );
 
   if (secondarySurfaceView) {
     return (
@@ -1080,71 +1035,9 @@ export default function App() {
         ) : null}
 
         <>
-          {snapshot.activeView === "new-thread" ? (
-            rootWorkspaceOptions.length > 0 ? (
-              <NewThreadView
-                workspaces={rootWorkspaceOptions}
-                selectedWorkspaceId={newThread.rootWorkspaceId || rootWorkspaceOptions[0]?.id || ""}
-                runtime={newThread.runtime}
-                environment={newThread.environment}
-                prompt={newThread.prompt}
-                attachments={newThread.attachments}
-                lastError={newThread.composerError}
-                provider={newThread.resolvedProvider}
-                modelId={newThread.resolvedModelId}
-                thinkingLevel={newThread.resolvedThinkingLevel}
-                modelOnboarding={newThread.modelOnboarding}
-                composerRef={newThread.composerRef}
-                activeSlashCommand={newThread.slashMenu.activeSlashFlow?.command}
-                activeSlashCommandMeta={newThread.slashMenu.activeSlashFlow?.command?.description}
-                slashSections={newThread.slashMenu.slashSections}
-                slashOptions={newThread.slashMenu.slashOptions}
-                selectedSlashCommand={
-                  newThread.slashMenu.activeSlashOptionCommand ??
-                  newThread.slashMenu.selectedSlashCommand
-                }
-                selectedSlashOption={newThread.slashMenu.selectedSlashOption}
-                showSlashMenu={newThread.slashMenu.showSlashMenu}
-                showSlashOptionMenu={newThread.slashMenu.showSlashOptionMenu}
-                slashOptionEmptyState={newThread.slashMenu.slashOptionEmptyState}
-                showMentionMenu={newThread.mentionMenu.showMentionMenu}
-                mentionOptions={newThread.mentionMenu.mentionOptions}
-                selectedMentionIndex={newThread.mentionMenu.selectedIndex}
-                onChangePrompt={newThread.setPrompt}
-                onSelectEnvironment={newThread.setEnvironment}
-                onSelectWorkspace={newThread.selectWorkspace}
-                onSetModel={(provider, modelId) => {
-                  newThread.setProvider(provider);
-                  newThread.setModelId(modelId);
-                }}
-                onSetThinking={newThread.setThinkingLevel}
-                onOpenModelSettings={(section) => openSettings(newThread.workspace?.id, section)}
-                onComposerKeyDown={newThread.handleComposerKeyDown}
-                onComposerPaste={newThread.handleComposerPaste}
-                onComposerDrop={newThread.handleComposerDrop}
-                onClearSlashCommand={newThread.slashMenu.resetSlashUi}
-                onSelectSlashCommand={(command) => {
-                  newThread.slashMenu.applySlashCommandSelection(command, "click");
-                }}
-                onSelectSlashOption={(option) => {
-                  newThread.slashMenu.applySlashOptionSelection(option);
-                }}
-                onSelectMention={newThread.mentionMenu.insertMention}
-                onEnableMentionExtension={newThread.mentionMenu.enableMentionExtension}
-                onAddAttachments={newThread.addAttachments}
-                onRemoveAttachment={newThread.removeAttachment}
-                onSubmit={newThread.startThread}
-              />
-            ) : (
-              <section className="canvas canvas--empty">
-                <div className="empty-panel">
-                  <div className="session-header__eyebrow">Workspace</div>
-                  <h1>Open a folder to start</h1>
-                  <p>Add a project folder before creating a new thread.</p>
-                </div>
-              </section>
-            )
-          ) : selectedWorkspace && selectedSession ? (
+          {snapshot.activeView === "new-thread" || !selectedWorkspace || !selectedSession ? (
+            newSessionView
+          ) : (
             <>
               <section className="canvas canvas--thread">
                 <div className="conversation conversation--thread">
@@ -1229,8 +1122,7 @@ export default function App() {
                 onSelectSlashOption={(option) => {
                   slashMenu.applySlashOptionSelection(option);
                 }}
-                onSetModel={handleSetSessionModel}
-                onSetThinking={handleSetSessionThinking}
+                onOpenInspector={() => workbench.openTool({ kind: "inspector" })}
                 modelOnboarding={selectedSessionModelOnboarding}
                 onOpenModelSettings={(section) =>
                   openSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id, section)
@@ -1287,38 +1179,6 @@ export default function App() {
                 />
               ) : null}
             </>
-          ) : selectedWorkspace ? (
-            <section className="canvas canvas--empty">
-              <div className="empty-panel">
-                <div className="session-header__eyebrow">Workspace</div>
-                <h1>{selectedWorkspace.name}</h1>
-                <p>Create a thread for this folder, then jump between sessions from the sidebar.</p>
-                <div className="empty-panel__actions">
-                  <button
-                    className="button button--primary"
-                    type="button"
-                    onClick={() =>
-                      newThread.openSurface(
-                        selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id,
-                      )
-                    }
-                  >
-                    New thread
-                  </button>
-                </div>
-              </div>
-            </section>
-          ) : (
-            <section className="canvas canvas--empty">
-              <div className="empty-panel">
-                <div className="session-header__eyebrow">Workspace</div>
-                <h1>Open a folder to start</h1>
-                <p>
-                  Add project folders, group sessions under them, and jump between threads from the
-                  sidebar.
-                </p>
-              </div>
-            </section>
           )}
         </>
         {sidePanelVisible && selectedWorkspace && selectedSession ? (
@@ -1353,22 +1213,25 @@ export default function App() {
               />
             ) : activeTool && activeTool.kind !== "extension" ? (
               renderBuiltinToolPanel(activeTool.kind, {
-                changes: () => (
-                  <DiffPanel
+                info: () => (
+                  <InfoPanel
                     key={selectedSessionKey}
-                    workspaceId={selectedWorkspace.id}
-                    sessionId={selectedSession.id}
                     api={api}
+                    target={workbenchTarget}
+                    workspacePath={selectedWorkspace.path}
+                    sessionTitle={displayedSessionTitle}
+                    onOpenInspector={() => workbench.openTool({ kind: "inspector" })}
+                  />
+                ),
+                inspector: () => (
+                  <InspectorPanel key={selectedSessionKey} api={api} target={workbenchTarget} />
+                ),
+                gitbutler: () => (
+                  <GitButlerPanel
+                    key={selectedSessionKey}
+                    api={api}
+                    workspaceId={selectedWorkspace.id}
                     sessionStatus={selectedSession.status}
-                    selection={workbench.view.changes}
-                    onSelectionChange={workbench.setChanges}
-                    onOpenFile={workbench.openFile}
-                    fileRequest={
-                      diffFileRequest?.sessionKey === selectedSessionKey
-                        ? diffFileRequest.request
-                        : null
-                    }
-                    contexts={fileWorkbenchContexts}
                   />
                 ),
                 files: () =>

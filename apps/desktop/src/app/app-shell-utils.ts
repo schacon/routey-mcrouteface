@@ -1,4 +1,4 @@
-export type ClosableSurface = "files" | "changes" | "terminal" | "workbench";
+export type ClosableSurface = "files" | "terminal" | "workbench";
 
 export function closableSurfaceFromTarget(target: EventTarget | null): ClosableSurface | null {
   if (!(target instanceof Element)) {
@@ -6,9 +6,6 @@ export function closableSurfaceFromTarget(target: EventTarget | null): ClosableS
   }
   if (target.closest("[data-pi-terminal]")) {
     return "terminal";
-  }
-  if (target.closest(".diff-panel")) {
-    return "changes";
   }
   if (target.closest("[data-testid='file-workbench']")) {
     return "files";

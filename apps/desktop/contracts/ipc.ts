@@ -16,6 +16,7 @@ import type { ClipboardImageRead } from "./composer-attachments";
 import type { SessionRef } from "@pi-gui/session-driver/types";
 import type { SaveTaskWorkbenchTemplateInput, TaskWorkbenchTemplate } from "./workbench";
 import type { RouterConfig, RouterOverview, RouterSessionInfo } from "./router";
+import type { GitButlerStatusResult } from "./gitbutler";
 import type {
   TurnChangesInput,
   TurnChangesResult,
@@ -195,6 +196,7 @@ export const desktopIpc = {
   getRouterOverview: "pi-gui:get-router-overview",
   setRouterConfig: "pi-gui:set-router-config",
   routerChanged: "pi-gui:router-changed",
+  getButStatus: "pi-gui:get-but-status",
   ping: "app:ping",
   openExternal: "app:open-external",
   relaunchApplication: "pi-gui:relaunch-application",
@@ -854,4 +856,6 @@ export interface PiDesktopApi {
   setRouterConfig(config: RouterConfig): Promise<RouterOverview>;
   /** A session's routing info changed, or (null) the router's own status did. */
   onRouterChanged(listener: (target: SessionRef | null) => void): () => void;
+  /** `but status` for a session's checkout; read-only. */
+  getButStatus(workspaceId: string): Promise<GitButlerStatusResult>;
 }

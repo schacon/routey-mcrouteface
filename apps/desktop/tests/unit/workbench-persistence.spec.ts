@@ -13,7 +13,7 @@ import { writeFileAtomicQueued } from "../../electron/persistence/atomic-file-wr
 function workbenchTemplate(): TaskWorkbenchTemplate {
   return {
     visibility: "hidden",
-    tools: [{ kind: "changes" }, { kind: "files" }, { kind: "terminal" }],
+    tools: [{ kind: "gitbutler" }, { kind: "files" }, { kind: "terminal" }],
     selection: { kind: "tool", toolId: toolRefId({ kind: "files" }) },
     files: {
       workspaceId: "workspace-one",
