@@ -1,7 +1,7 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { AppView, WorkspaceRecord, WorktreeRecord } from "../../contracts/desktop-state";
 import { getSidePanelToggleShortcutLabel, type PiDesktopApi } from "../../contracts/ipc";
-import { SidePanelIcon } from "../ui/icons";
+import { ClockIcon, PlusIcon, SettingsIcon, SidePanelIcon } from "../ui/icons";
 
 interface TopbarProps {
   readonly activeView: AppView;
@@ -14,6 +14,9 @@ interface TopbarProps {
   readonly panelAvailable: boolean;
   readonly panelVisible: boolean;
   readonly onTogglePanel: () => void;
+  readonly onNewSession: () => void;
+  readonly onOpenSessions: () => void;
+  readonly onOpenSettings: () => void;
 }
 
 export function Topbar({
@@ -27,6 +30,9 @@ export function Topbar({
   panelAvailable,
   panelVisible,
   onTogglePanel,
+  onNewSession,
+  onOpenSessions,
+  onOpenSettings,
 }: TopbarProps) {
   const handleDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
     const target = event.target;
@@ -47,7 +53,9 @@ export function Topbar({
           className="topbar__workspace"
           title={checkoutLabel ? `${rootWorkspace?.name ?? ""} · ${checkoutLabel}` : undefined}
         >
-          {rootWorkspace ? rootWorkspace.name : "Open a folder to begin"}
+          {activeView === "new-thread" || !rootWorkspace
+            ? "Routey McRouteface"
+            : rootWorkspace.name}
         </span>
         {sessionTitle ? (
           <>
@@ -61,15 +69,45 @@ export function Topbar({
             <span className="topbar__separator">/</span>
             <span className="topbar__session">{checkoutLabel}</span>
           </>
-        ) : activeView === "new-thread" && rootWorkspace ? (
+        ) : activeView === "new-thread" ? (
           <>
             <span className="topbar__separator">/</span>
-            <span className="topbar__session">New thread</span>
+            <span className="topbar__session">New session</span>
           </>
         ) : null}
       </div>
       <div className="topbar__actions">
         {children}
+        <button
+          type="button"
+          aria-label="New session"
+          title="New session"
+          data-testid="topbar-new-session"
+          className="icon-button topbar__icon"
+          onClick={onNewSession}
+        >
+          <PlusIcon />
+        </button>
+        <button
+          type="button"
+          aria-label="Sessions"
+          title="Sessions"
+          data-testid="topbar-sessions"
+          className="icon-button topbar__icon"
+          onClick={onOpenSessions}
+        >
+          <ClockIcon />
+        </button>
+        <button
+          type="button"
+          aria-label="Settings"
+          title="Settings"
+          data-testid="topbar-settings"
+          className="icon-button topbar__icon"
+          onClick={onOpenSettings}
+        >
+          <SettingsIcon />
+        </button>
         {!panelVisible ? (
           <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
             <button

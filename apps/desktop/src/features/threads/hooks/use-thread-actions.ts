@@ -28,7 +28,6 @@ interface UseThreadActionsParams {
     action: () => Promise<DesktopAppState>,
   ) => Promise<DesktopAppState>;
   readonly scheduledTasks: readonly ScheduledTaskRecord[];
-  readonly sidebarCollapsed: boolean;
   readonly openScheduledEditor: (editor: ScheduledEditorState) => void;
 }
 
@@ -63,7 +62,6 @@ export function useThreadActions({
   setSnapshot,
   updateSnapshot,
   scheduledTasks,
-  sidebarCollapsed,
   openScheduledEditor,
 }: UseThreadActionsParams): ThreadMenuState {
   const [openMenu, setOpenMenu] = useState<OpenThreadMenu | null>(null);
@@ -118,8 +116,6 @@ export function useThreadActions({
     hasScheduledTask: (subject) =>
       Boolean(nonCompletedBindingForSession(scheduledTasks, subject.session.id)),
     startRename: (subject) => {
-      // The rename field lives in the sidebar row, so show the sidebar first.
-      if (sidebarCollapsed) mutate((desktopApi) => desktopApi.setSidebarCollapsed(false));
       setRenameSessionId(subject.session.id);
       setRenameDraft(subject.session.title);
     },

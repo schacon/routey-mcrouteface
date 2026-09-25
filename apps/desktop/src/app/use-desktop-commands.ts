@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -39,19 +38,14 @@ import {
 } from "../features/command-palette/palette-actions";
 import type { SettingsSection } from "../features/settings/settings-view";
 import {
-  visibleThreadShortcutOrder,
+  sessionShortcutOrder,
   type ThreadListEntry,
   type ThreadSidebarModel,
 } from "../features/threads/thread-groups";
 import type { ThreadAction, ThreadActionId } from "../features/threads/thread-actions";
-import { dismissThreadShortcutHints } from "../features/threads/thread-shortcut-hints";
 import { dismissSidePanelTabHints } from "../features/workbench/side-panel-tab-hints";
 import type { useWorkbench } from "../features/workbench/use-workbench";
-import {
-  canTogglePrimarySidebar,
-  closableSurfaceFromTarget,
-  isEventInsideTerminal,
-} from "./app-shell-utils";
+import { closableSurfaceFromTarget, isEventInsideTerminal } from "./app-shell-utils";
 import { updateSnapshot } from "./desktop-app-state";
 
 /** Returns false when the command could not act, so its key event is left alone. */
@@ -67,7 +61,6 @@ interface DesktopCommandsInput {
   readonly selectedThread:
     { readonly actions: readonly ThreadAction[]; readonly canSwitchModel: boolean } | undefined;
   readonly threadSidebarModel: ThreadSidebarModel | undefined;
-  readonly threadShortcutOrderRef: RefObject<readonly ThreadListEntry[] | null>;
   /** Opens a thread the way a sidebar click does, saving the current draft and scroll first. */
   readonly selectThread: (target: WorkspaceSessionTarget) => void;
   readonly threadSearch: {
@@ -85,6 +78,7 @@ interface DesktopCommandsInput {
   readonly openSkills: (workspaceId?: string) => void;
   readonly openExtensions: (workspaceId?: string) => void;
   readonly setActiveView: (view: AppView) => void;
+  readonly openSessions: () => void;
 }
 
 /**
@@ -99,7 +93,6 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
     selectedRootWorkspaceId,
     selectedThread,
     threadSidebarModel,
-    threadShortcutOrderRef,
     threadSearch,
     workbench,
     sidePanelAvailable,
@@ -107,16 +100,6 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
     selectedToolId,
   } = input;
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
-  const sidebarToggleStateRef = useRef({
-    api,
-    activeView: undefined as AppView | undefined,
-    sidebarCollapsed: false,
-  });
-  sidebarToggleStateRef.current = {
-    api,
-    activeView: snapshot?.activeView,
-    sidebarCollapsed: snapshot?.sidebarCollapsed ?? false,
-  };
   const threadSearchGate = useRef(createChordToggleGate());
   const reviewToggleGate = useRef(createChordToggleGate(REVIEW_TOGGLE_DEDUPE_MS));
   // IPC and the renderer can both deliver one chord. Collapse only that pair so
@@ -157,34 +140,18 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
         ?.focus();
     });
   };
-  const togglePrimarySidebar = useCallback(() => {
-    const sidebarState = sidebarToggleStateRef.current;
-    const sidebarApi = sidebarState.api;
-    if (!sidebarApi || !canTogglePrimarySidebar(sidebarState.activeView)) {
-      return false;
-    }
-    void updateSnapshot(setSnapshot, () =>
-      sidebarApi.setSidebarCollapsed(!sidebarState.sidebarCollapsed),
-    ).catch((error: unknown) => {
-      console.error("[renderer] updateSnapshot failed", error);
-    });
+  // Cmd+B used to toggle the sidebar; the sessions list now lives in a modal.
+  const openSessions = () => {
+    input.openSessions();
     return true;
-  }, []);
+  };
   const togglePalette = (mode: "commands" | "files", source: ChordSource) => {
     if (threadSidebarModel && paletteGates.current[mode](source, performance.now())) {
       setPaletteMode((current) => (current === mode ? null : mode));
     }
   };
   const selectRecentThread = (index: number) => {
-    const threads =
-      threadShortcutOrderRef.current ??
-      (threadSidebarModel
-        ? visibleThreadShortcutOrder({
-            grouping: snapshot?.threadGrouping ?? "time",
-            model: threadSidebarModel,
-          })
-        : []);
-    const thread = threads[index];
+    const thread = threadSidebarModel ? sessionShortcutOrder(threadSidebarModel)[index] : undefined;
     if (thread)
       input.selectThread({ workspaceId: thread.workspaceId, sessionId: thread.session.id });
   };
@@ -208,7 +175,7 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
       if (reviewToggleGate.current(performance.now())) toggleWorkbenchTool("changes");
     },
     [desktopCommands.closeFocusedSurface]: closeFocusedSurface,
-    [desktopCommands.toggleSidebar]: togglePrimarySidebar,
+    [desktopCommands.toggleSidebar]: openSessions,
     [desktopCommands.openCommandPalette]: (source) => togglePalette("commands", source),
     [desktopCommands.openFilePalette]: (source) => togglePalette("files", source),
     [desktopCommands.renameThread]: () => runThreadAction("rename-thread"),
@@ -342,8 +309,7 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
     // Bind once. Re-subscribing when session or search identity changes drops
     // Cmd+R and 1-9 in the gap after a thread switch or relaunch.
     const dispatch = (command: PiDesktopCommand, source: ChordSource) => {
-      // Thread and tab switches keep their 1-9 hints up while the modifier stays held.
-      if (!isRecentThreadCommand(command)) dismissThreadShortcutHints();
+      // Tab switches keep their 1-9 hints up while the modifier stays held.
       if (sidePanelTabIndex(command) === undefined) dismissSidePanelTabHints();
       handleCommandRef.current(command, source);
     };
@@ -409,7 +375,7 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
           platform: api.platform,
           hasWorkspace: input.hasWorkspace,
           thread: selectedThread,
-          canToggleSidebar: canTogglePrimarySidebar(snapshot?.activeView),
+          canToggleSidebar: true,
           newThread: openNewThread,
           openFolder: () => {
             void updateSnapshot(setSnapshot, () => api.pickWorkspace()).catch((error: unknown) => {
@@ -420,7 +386,7 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
           openSkills: () => input.openSkills(selectedRootWorkspaceId),
           openExtensions: () => input.openExtensions(selectedRootWorkspaceId),
           openScheduledTasks: () => input.setActiveView("scheduled"),
-          toggleSidebar: togglePrimarySidebar,
+          toggleSidebar: openSessions,
           toggleTool: toggleWorkbenchTool,
           toggleSidePanel,
           extensionViews: input.extensionViews
@@ -442,5 +408,5 @@ export function useDesktopCommands(input: DesktopCommandsInput) {
         })
       : [];
 
-  return { paletteMode, setPaletteMode, paletteActions, toggleSidePanel, togglePrimarySidebar };
+  return { paletteMode, setPaletteMode, paletteActions, toggleSidePanel };
 }

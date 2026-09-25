@@ -13,7 +13,6 @@ import {
 import { updateSnapshot, useDesktopAppState } from "./desktop-app-state";
 import { DesktopStartupSurface, toStartupSurfaceState } from "./desktop-recovery";
 import { buildFileWorkbenchContexts } from "./file-workbench-contexts";
-import { canTogglePrimarySidebar } from "./app-shell-utils";
 import { useDesktopCommands } from "./use-desktop-commands";
 import { useRunningLabel } from "../features/conversation/hooks/use-running-label";
 import { useTimelineViewport } from "../features/conversation/hooks/use-timeline-viewport";
@@ -38,7 +37,6 @@ import { renderBuiltinToolPanel } from "../features/workbench/builtin-tools";
 import { useWorkbenchWidth } from "../features/workbench/use-workbench-width";
 import type { WorkspaceFileLine } from "../features/conversation/workspace-file-line";
 import { buildModelOptions } from "../features/conversation/composer-commands";
-import { getDesktopShortcutLabel } from "../../contracts/ipc";
 import { CommandPaletteSurface } from "../features/command-palette/command-palette-surface";
 import { deriveModelOnboardingState } from "../features/settings/model-onboarding";
 import type { SettingsSection } from "../features/settings/settings-view";
@@ -49,8 +47,8 @@ import {
   sessionThreadKey,
   type ThreadListEntry,
 } from "../features/threads/thread-groups";
-import { Sidebar } from "../features/threads/sidebar";
 import { ThreadSwitcher } from "../features/threads/thread-switcher";
+import { SessionsModal } from "../features/sessions/sessions-modal";
 import {
   loadThreadSwitcherOrder,
   orderThreadSwitcherEntries,
@@ -58,7 +56,6 @@ import {
   touchThreadSwitcherOrder,
 } from "../features/threads/thread-switcher-order";
 import { useThreadSwitcher } from "../features/threads/hooks/use-thread-switcher";
-import { SidebarToggleButton } from "../features/threads/sidebar-toggle-button";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "../features/workbench/terminal-panel";
 import { ConversationTimeline } from "../features/conversation/conversation-timeline";
@@ -117,6 +114,7 @@ export default function App() {
     readonly request: DiffPanelFileRequest;
   } | null>(null);
   const [scheduledEditor, setScheduledEditor] = useState<ScheduledEditorState | null>(null);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const api = window.piApp;
 
   useEffect(() => {
@@ -368,7 +366,6 @@ export default function App() {
     onSelect: (entry) =>
       selectThreadRef.current({ workspaceId: entry.workspaceId, sessionId: entry.session.id }),
   });
-  const threadShortcutOrderRef = useRef<readonly ThreadListEntry[] | null>(null);
   const focusComposer = () => {
     window.requestAnimationFrame(() => {
       if (restoreTopmostDialogFocus()) {
@@ -525,7 +522,6 @@ export default function App() {
     setSnapshot,
     updateSnapshot,
     scheduledTasks: snapshot?.scheduledTasks ?? [],
-    sidebarCollapsed: snapshot?.sidebarCollapsed ?? false,
     openScheduledEditor: setScheduledEditor,
   });
 
@@ -623,9 +619,6 @@ export default function App() {
     );
   }, [rootWorkspaceOptions]);
 
-  const primarySidebarToggleVisible = canTogglePrimarySidebar(snapshot?.activeView);
-  const sidebarToggleShortcutLabel = api ? getDesktopShortcutLabel(api.platform, "B") : "";
-
   const setActiveView = (view: AppView) => {
     if (!api) return;
     void updateSnapshot(setSnapshot, () => api.setActiveView(view)).catch((error: unknown) => {
@@ -677,7 +670,6 @@ export default function App() {
       ? { actions: selectedThreadActions, canSwitchModel: selectedModelOptions.length > 0 }
       : undefined,
     threadSidebarModel,
-    threadShortcutOrderRef,
     selectThread: (target) => selectThreadRef.current(target),
     threadSearch,
     workbench,
@@ -690,6 +682,7 @@ export default function App() {
     openSkills,
     openExtensions,
     setActiveView,
+    openSessions: () => setSessionsOpen(true),
   });
 
   useEffect(() => {
@@ -726,7 +719,8 @@ export default function App() {
   const secondarySurfaceView =
     snapshot.activeView === "settings" ||
     snapshot.activeView === "skills" ||
-    snapshot.activeView === "extensions"
+    snapshot.activeView === "extensions" ||
+    snapshot.activeView === "scheduled"
       ? snapshot.activeView
       : null;
   const filesWorkspace = snapshot.workspaces.find(
@@ -899,6 +893,41 @@ export default function App() {
       />
     ) : null;
 
+  const scheduledTaskEditor = scheduledEditor ? (
+    <ScheduledTaskEditor
+      editor={scheduledEditor}
+      task={
+        scheduledEditor.mode === "edit"
+          ? snapshot.scheduledTasks.find((task) => task.id === scheduledEditor.taskId)
+          : undefined
+      }
+      workspaces={snapshot.workspaces}
+      selectedWorkspaceId={snapshot.selectedWorkspaceId}
+      busy={false}
+      error={snapshot.lastError}
+      onClose={() => setScheduledEditor(null)}
+      onSubmit={handleSubmitScheduledTask}
+      onOpenChat={handleOpenScheduledChat}
+    />
+  ) : null;
+
+  const sessionsModal =
+    sessionsOpen && threadSidebarModel ? (
+      <SessionsModal
+        model={threadSidebarModel}
+        currentSession={selectedThreadTarget}
+        onOpenSession={(target) => {
+          if (snapshot.activeView !== "threads") setActiveView("threads");
+          handleSelectSession(target);
+        }}
+        onRestoreSession={threadMenu.restore}
+        onClose={() => setSessionsOpen(false)}
+      />
+    ) : null;
+
+  const openNewSession = () =>
+    newThread.openSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id);
+
   if (secondarySurfaceView) {
     return (
       <>
@@ -919,52 +948,27 @@ export default function App() {
           onBack={() => setActiveView("threads")}
           onSelectView={setActiveView}
           onTrySkill={handleTrySkill}
+          scheduledView={
+            <ScheduledTasksView
+              tasks={snapshot.scheduledTasks}
+              lastError={snapshot.lastError}
+              api={api}
+              setSnapshot={setSnapshot}
+              updateSnapshot={updateSnapshot}
+              onCreateWithPi={handleCreateScheduledTaskWithPi}
+              onOpenEditor={setScheduledEditor}
+            />
+          }
         />
+        {scheduledTaskEditor}
+        {sessionsModal}
         {commandPalette}
       </>
     );
   }
 
-  const shellClassName = `shell${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}`;
-
   return (
-    <div className={shellClassName}>
-      {primarySidebarToggleVisible ? (
-        <SidebarToggleButton
-          collapsed={snapshot.sidebarCollapsed}
-          shortcutLabel={sidebarToggleShortcutLabel}
-          onToggle={commands.togglePrimarySidebar}
-        />
-      ) : null}
-      {!snapshot.sidebarCollapsed ? (
-        <Sidebar
-          activeView={snapshot.activeView}
-          selectedWorkspace={selectedWorkspace}
-          selectedSession={selectedSession}
-          visibleWorkspaces={visibleWorkspaces}
-          threadSidebarModel={threadSidebarModel ?? buildThreadSidebarModel(snapshot)}
-          threadShortcutOrderRef={threadShortcutOrderRef}
-          threadGrouping={snapshot.threadGrouping}
-          linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
-          wsMenu={wsMenu}
-          threadMenu={threadMenu}
-          api={api}
-          setSnapshot={setSnapshot}
-          updateSnapshot={updateSnapshot}
-          onNewThread={() =>
-            newThread.openSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)
-          }
-          onSetActiveView={setActiveView}
-          onOpenSkills={openSkills}
-          onOpenExtensions={openExtensions}
-          onOpenSettings={openSettings}
-          onArchiveSession={threadMenu.archive}
-          onSelectSession={handleSelectSession}
-          onSetSessionPinned={threadMenu.setPinned}
-          onUnarchiveSession={threadMenu.restore}
-        />
-      ) : null}
-
+    <div className="shell shell--sidebar-collapsed">
       <main className={mainClassName} style={workbenchWidth.style}>
         <Topbar
           activeView={snapshot.activeView}
@@ -975,6 +979,9 @@ export default function App() {
           panelAvailable={sidePanelAvailable}
           panelVisible={sidePanelVisible}
           onTogglePanel={commands.toggleSidePanel}
+          onNewSession={openNewSession}
+          onOpenSessions={() => setSessionsOpen(true)}
+          onOpenSettings={() => openSettings(selectedRootWorkspaceId)}
           sessionTitle={
             snapshot.activeView === "threads" && selectedSession ? displayedSessionTitle : undefined
           }
@@ -993,7 +1000,7 @@ export default function App() {
                 <button
                   aria-haspopup="menu"
                   aria-expanded={threadMenu.openMenu?.surface === "header"}
-                  aria-label="Thread actions"
+                  aria-label="Session actions"
                   className="icon-button"
                   data-testid="thread-header-menu"
                   type="button"
@@ -1006,6 +1013,49 @@ export default function App() {
                     actions={selectedThreadActions}
                     className="chat-header__menu"
                   />
+                ) : null}
+                {threadMenu.renameSessionId === selectedSession.id ? (
+                  <form
+                    className="workspace-rename session-rename chat-header__menu"
+                    ref={threadMenu.renamePanelRef}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      threadMenu.submitRename({
+                        workspaceId: selectedWorkspace.id,
+                        session: selectedSession,
+                      });
+                    }}
+                  >
+                    <input
+                      aria-label={`Rename session ${selectedSession.title}`}
+                      className="workspace-rename__input"
+                      autoFocus
+                      onFocus={(event) => event.currentTarget.select()}
+                      value={threadMenu.renameDraft}
+                      onChange={(event) => threadMenu.setRenameDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          threadMenu.cancelRename();
+                        }
+                      }}
+                    />
+                    <div className="workspace-rename__actions">
+                      <button
+                        className="workspace-rename__button"
+                        type="button"
+                        onClick={threadMenu.cancelRename}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="workspace-rename__button workspace-rename__button--primary"
+                        type="submit"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </form>
                 ) : null}
               </div>
             </>
@@ -1030,17 +1080,7 @@ export default function App() {
         ) : null}
 
         <>
-          {snapshot.activeView === "scheduled" ? (
-            <ScheduledTasksView
-              tasks={snapshot.scheduledTasks}
-              lastError={snapshot.lastError}
-              api={api}
-              setSnapshot={setSnapshot}
-              updateSnapshot={updateSnapshot}
-              onCreateWithPi={handleCreateScheduledTaskWithPi}
-              onOpenEditor={setScheduledEditor}
-            />
-          ) : snapshot.activeView === "new-thread" ? (
+          {snapshot.activeView === "new-thread" ? (
             rootWorkspaceOptions.length > 0 ? (
               <NewThreadView
                 workspaces={rootWorkspaceOptions}
@@ -1360,23 +1400,8 @@ export default function App() {
           </Workbench>
         ) : null}
       </main>
-      {scheduledEditor ? (
-        <ScheduledTaskEditor
-          editor={scheduledEditor}
-          task={
-            scheduledEditor.mode === "edit"
-              ? snapshot.scheduledTasks.find((task) => task.id === scheduledEditor.taskId)
-              : undefined
-          }
-          workspaces={snapshot.workspaces}
-          selectedWorkspaceId={snapshot.selectedWorkspaceId}
-          busy={false}
-          error={snapshot.lastError}
-          onClose={() => setScheduledEditor(null)}
-          onSubmit={handleSubmitScheduledTask}
-          onOpenChat={handleOpenScheduledChat}
-        />
-      ) : null}
+      {scheduledTaskEditor}
+      {sessionsModal}
       {threadSwitcher.state?.overlayVisible ? (
         <ThreadSwitcher state={threadSwitcher.state} onChoose={threadSwitcher.choose} />
       ) : null}

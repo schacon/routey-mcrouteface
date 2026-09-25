@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { AppView, DesktopAppState, WorkspaceRecord } from "../../contracts/desktop-state";
 import { updateSnapshot } from "./desktop-app-state";
@@ -11,6 +18,7 @@ import { CustomizePage } from "../features/extensions/customize-page";
 import { SettingsView, type SettingsSection } from "../features/settings/settings-view";
 import {
   CUSTOMIZE_SECTION_ID,
+  SCHEDULED_SECTION_ID,
   SETTINGS_NAV_ITEMS,
   SETTINGS_SECTIONS,
 } from "../features/settings/settings-sections";
@@ -21,7 +29,7 @@ interface SecondarySurfacesProps {
   readonly api: NonNullable<typeof window.piApp>;
   readonly snapshot: DesktopAppState;
   readonly setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>;
-  readonly activeView: Extract<AppView, "settings" | "skills" | "extensions">;
+  readonly activeView: Extract<AppView, "settings" | "skills" | "extensions" | "scheduled">;
   readonly rootWorkspaceOptions: readonly WorkspaceRecord[];
   readonly settingsSection: SettingsSection;
   readonly onSelectSettingsSection: (section: SettingsSection) => void;
@@ -32,9 +40,12 @@ interface SecondarySurfacesProps {
   readonly extensionsWorkspaceId: string;
   readonly onSelectExtensionsWorkspace: (workspaceId: string) => void;
   readonly onBack: () => void;
-  /** Settings and the Skills and extensions page are separate app views. */
-  readonly onSelectView: (view: Extract<AppView, "settings" | "skills" | "extensions">) => void;
+  /** Settings, Scheduled tasks and the Skills and extensions page are separate app views. */
+  readonly onSelectView: (
+    view: Extract<AppView, "settings" | "skills" | "extensions" | "scheduled">,
+  ) => void;
   readonly onTrySkill: (command: string) => void;
+  readonly scheduledView: ReactNode;
 }
 
 export function SecondarySurfaces({
@@ -54,6 +65,7 @@ export function SecondarySurfaces({
   onBack,
   onSelectView,
   onTrySkill,
+  scheduledView,
 }: SecondarySurfacesProps) {
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
     useState<DesktopNotificationPermissionStatus>("unknown");
@@ -337,7 +349,8 @@ export function SecondarySurfaces({
       });
   };
 
-  const customizeTab = activeView === "settings" ? undefined : activeView;
+  const customizeTab =
+    activeView === "skills" || activeView === "extensions" ? activeView : undefined;
   const customizeWorkspace = customizeTab === "extensions" ? extensionsWorkspace : skillsWorkspace;
   const workspacePicker = (
     value: WorkspaceRecord | undefined,
@@ -357,7 +370,13 @@ export function SecondarySurfaces({
 
   return (
     <SecondarySurface
-      activeNavId={customizeTab ? CUSTOMIZE_SECTION_ID : settingsSection}
+      activeNavId={
+        activeView === "scheduled"
+          ? SCHEDULED_SECTION_ID
+          : customizeTab
+            ? CUSTOMIZE_SECTION_ID
+            : settingsSection
+      }
       navItems={SETTINGS_NAV_ITEMS}
       onBack={onBack}
       onSelectNav={(id) => {
@@ -365,15 +384,27 @@ export function SecondarySurfaces({
           if (!customizeTab) onSelectView("skills");
           return;
         }
+        if (id === SCHEDULED_SECTION_ID) {
+          onSelectView("scheduled");
+          return;
+        }
         const section = SETTINGS_SECTIONS.find((definition) => definition.id === id);
         if (!section) return;
         onSelectSettingsSection(section.id);
-        if (customizeTab) onSelectView("settings");
+        if (activeView !== "settings") onSelectView("settings");
       }}
-      testId={customizeTab ? `${customizeTab}-surface` : "settings-surface"}
+      testId={
+        activeView === "scheduled"
+          ? "scheduled-surface"
+          : customizeTab
+            ? `${customizeTab}-surface`
+            : "settings-surface"
+      }
       title="Settings"
     >
-      {customizeTab ? (
+      {activeView === "scheduled" ? (
+        scheduledView
+      ) : customizeTab ? (
         <CustomizePage
           commandCompatibility={extensionsCommandCompatibility}
           extensionsRuntime={extensionsRuntime}

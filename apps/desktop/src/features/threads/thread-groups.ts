@@ -33,19 +33,6 @@ export interface WorkspaceThreadGroup {
   readonly threads: readonly ThreadListEntry[];
 }
 
-export const THREAD_HISTORY_PREVIEW_LIMIT = 5;
-
-export function threadHistoryPreview<T>(
-  threads: readonly T[],
-  expanded: boolean,
-): { readonly visible: readonly T[]; readonly overflow: boolean } {
-  const overflow = threads.length > THREAD_HISTORY_PREVIEW_LIMIT;
-  return {
-    visible: overflow && !expanded ? threads.slice(0, THREAD_HISTORY_PREVIEW_LIMIT) : threads,
-    overflow,
-  };
-}
-
 export interface RecencyThreadSection {
   readonly bucket: RecencyBucketId;
   readonly label: string;
@@ -189,48 +176,9 @@ export function sessionThreadKey(thread: ThreadListEntry): string {
   return `${thread.workspaceId}:${thread.session.id}`;
 }
 
-const EMPTY_EXPANDED_HISTORY: ReadonlySet<string> = new Set();
-
-export function workspaceHistoryExpansionKey(workspaceId: string): string {
-  return `workspace:${workspaceId}`;
-}
-
-export function recencyHistoryExpansionKey(bucket: RecencyBucketId): string {
-  return `bucket:${bucket}`;
-}
-
-export interface VisibleThreadShortcutOptions {
-  readonly grouping: ThreadGrouping;
-  readonly model: ThreadSidebarModel;
-  readonly expandedHistory?: ReadonlySet<string>;
-  readonly archivedOpen?: boolean;
-}
-
-export function visibleThreadShortcutOrder(
-  options: VisibleThreadShortcutOptions,
-): readonly ThreadListEntry[] {
-  const expandedHistory = options.expandedHistory ?? EMPTY_EXPANDED_HISTORY;
-  const unpinned =
-    options.grouping === "workspace"
-      ? options.model.workspaceGroups.flatMap(
-          (group) =>
-            threadHistoryPreview(
-              group.threads,
-              expandedHistory.has(workspaceHistoryExpansionKey(group.workspace.id)),
-            ).visible,
-        )
-      : options.model.recencySections.flatMap(
-          (section) =>
-            threadHistoryPreview(
-              section.threads,
-              expandedHistory.has(recencyHistoryExpansionKey(section.bucket)),
-            ).visible,
-        );
-  return [
-    ...options.model.pinnedThreads,
-    ...unpinned,
-    ...(options.archivedOpen ? options.model.archivedThreads : []),
-  ];
+/** Cmd+1-9 order: pinned sessions, then the rest newest first, as the Sessions modal lists them. */
+export function sessionShortcutOrder(model: ThreadSidebarModel): readonly ThreadListEntry[] {
+  return [...model.pinnedThreads, ...model.recencySections.flatMap((section) => section.threads)];
 }
 
 export function comparePinnedThreads(

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   BellIcon,
+  ClockIcon,
   KeyboardIcon,
   ModelIcon,
   PlugIcon,
@@ -83,9 +84,18 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["id"];
 
 /** Skills and extensions live in the settings nav but are their own app views. */
 export const CUSTOMIZE_SECTION_ID = "customize";
+/** Scheduled tasks live in the settings nav but are their own app view. */
+export const SCHEDULED_SECTION_ID = "scheduled";
 
 export const SETTINGS_NAV_ITEMS = [
   ...SETTINGS_SECTIONS,
+  {
+    id: SCHEDULED_SECTION_ID,
+    title: "Scheduled tasks",
+    group: "Agent",
+    icon: <ClockIcon />,
+    keywords: ["schedule", "cron", "recurring", "automation", "daily", "weekly"],
+  },
   {
     id: CUSTOMIZE_SECTION_ID,
     title: "Skills and extensions",

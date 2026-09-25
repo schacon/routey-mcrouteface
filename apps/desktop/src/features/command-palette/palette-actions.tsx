@@ -14,7 +14,6 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
-  SidebarToggleIcon,
   SidePanelIcon,
   SkillIcon,
 } from "../../ui/icons";
@@ -143,9 +142,9 @@ export function buildPaletteActions(context: PaletteActionContext): readonly Pal
   }
   if (context.canToggleSidebar) {
     actions.push({
-      id: "toggle-sidebar",
-      title: "Toggle sidebar",
-      icon: <SidebarToggleIcon />,
+      id: "open-sessions",
+      title: "Sessions",
+      icon: <ClockIcon />,
       hint: formatShortcut(platform, "B"),
       run: context.toggleSidebar,
     });
