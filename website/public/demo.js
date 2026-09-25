@@ -1,29 +1,30 @@
 const examples = {
   question: {
-    prompt: "What's the capital of Peru?",
+    prompt: "In my app, what does the session queue do?",
     tier: "Local",
-    thinking: "Off",
-    mode: "Answer",
-    directory: "~/routey-mcrouteface",
-    reason: "A general question can go to a local model, without opening a project or using tools.",
-  },
-  plan: {
-    prompt: "In my website project, plan a simpler navigation.",
-    tier: "Hosted",
-    thinking: "Medium",
+    thinking: "Low",
     mode: "Plan",
-    directory: "~/projects/website",
+    directory: "~/projects/my-app",
     reason:
-      "This request names a project and asks for a plan. Read-only tools let the agent explore before proposing changes.",
+      "A local model can read the code and explain the queue. The big rocket can stay parked.",
   },
   code: {
-    prompt: "In my app, fix the race condition in the session queue.",
+    prompt: "Oh. Two sessions can grab the same job. Fix that race condition.",
     tier: "Frontier",
     thinking: "High",
     mode: "Execute",
     directory: "~/projects/my-app",
     reason:
-      "A complex coding task can use a frontier model with more thinking and the tools to make changes.",
+      "Concurrency trouble. Time for a frontier model, more thinking, and tools to edit the code. Big noggin, you're up.",
+  },
+  summary: {
+    prompt: "Explain that fix like I'm a slightly confused duck.",
+    tier: "Local",
+    thinking: "Off",
+    mode: "Answer",
+    directory: "~/projects/my-app",
+    reason:
+      "A short explanation can go back to a local model. Same chat, same project. The rocket has left the meeting. Honk.",
   },
 };
 
@@ -33,7 +34,7 @@ const buttons = document.querySelectorAll("button[data-example]");
 for (const button of buttons) {
   button.addEventListener("click", () => {
     const key = button.getAttribute("data-example");
-    if (key !== "question" && key !== "plan" && key !== "code") return;
+    if (key !== "question" && key !== "code" && key !== "summary") return;
     const example = examples[key];
 
     for (const [field, value] of Object.entries(example)) {
