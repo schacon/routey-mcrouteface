@@ -269,6 +269,12 @@ test("keeps long tool metadata and user rows inside the transcript at wide and n
     await saveProofScreenshot(window, proofDir, "wide-expanded.png");
 
     await setElectronWindowSize(harness, window, NARROW_WINDOW);
+    // Narrow windows show the side panel as an overlay drawer; close it to read the transcript.
+    const workbench = window.getByTestId("workbench");
+    if (await workbench.isVisible()) {
+      await workbench.getByTestId("toggle-side-panel").click();
+      await expect(workbench).toHaveCount(0);
+    }
     await expectNoHorizontalOverflow(window, true);
     await saveProofScreenshot(window, proofDir, "narrow-expanded.png");
 

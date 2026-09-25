@@ -57,7 +57,7 @@ export function useWorkbench({ api, target }: UseWorkbenchOptions) {
     const key = targetKey(ref);
     const existing = entries.current.get(key);
     if (existing) return existing;
-    const initialView = initialWorkbenchView(ref.workspaceId);
+    const initialView = initialWorkbenchView(ref.workspaceId, defaultPanelVisibility());
     const entry: WorkbenchEntry = {
       view: initialView,
       initialView,
@@ -247,7 +247,8 @@ export function useWorkbench({ api, target }: UseWorkbenchOptions) {
   }, [restore]);
 
   const entry = target ? entries.current.get(targetKey(target)) : undefined;
-  const view = entry?.view ?? initialWorkbenchView(target?.workspaceId ?? "");
+  const view =
+    entry?.view ?? initialWorkbenchView(target?.workspaceId ?? "", defaultPanelVisibility());
   return {
     view,
     activeTool: activeWorkbenchTool(view),
@@ -264,4 +265,11 @@ export function useWorkbench({ api, target }: UseWorkbenchOptions) {
     openFile,
     retryRestore,
   };
+}
+
+/** Below this width the side panel would squeeze the conversation, so it starts closed. */
+const OPEN_PANEL_MIN_WIDTH = 1100;
+
+function defaultPanelVisibility(): "visible" | "hidden" {
+  return window.innerWidth >= OPEN_PANEL_MIN_WIDTH ? "visible" : "hidden";
 }

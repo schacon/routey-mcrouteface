@@ -24,10 +24,17 @@ export type WorkbenchAction =
   | { readonly type: "set-changes"; readonly changes: TaskWorkbenchTemplate["changes"] }
   | { readonly type: "open-file"; readonly file: WorkspaceFileReference };
 
-/** A task without a saved layout opens on Info: where it works, its models and its purpose. */
-export function initialWorkbenchView(workspaceId: string): TaskWorkbenchTemplate {
+/**
+ * A task without a saved layout opens on Info: where it works, its models and
+ * its purpose. Narrow windows start with the panel closed so the conversation
+ * keeps its width.
+ */
+export function initialWorkbenchView(
+  workspaceId: string,
+  visibility: TaskWorkbenchTemplate["visibility"] = "visible",
+): TaskWorkbenchTemplate {
   return {
-    visibility: "visible",
+    visibility,
     tools: [{ kind: "info" }, { kind: "inspector" }, { kind: "stats" }],
     selection: { kind: "tool", toolId: "info" },
     files: { workspaceId, tabs: EMPTY_FILE_TABS },
