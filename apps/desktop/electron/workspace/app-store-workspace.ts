@@ -99,7 +99,9 @@ export interface WorkspaceOwner {
   syncCurrentWorkspace(): Promise<DesktopAppState>;
   createWorktree(input: CreateWorktreeInput): Promise<DesktopAppState>;
   removeWorktree(input: RemoveWorktreeInput): Promise<DesktopAppState>;
-  startThread(input: StartThreadInput): Promise<DesktopAppState>;
+  startThread(input: StartThreadInput, hooks?: worktree.StartThreadHooks): Promise<DesktopAppState>;
+  /** The workspace for a folder, registering it without changing the selection. */
+  ensureWorkspace(path: string): Promise<WorkspaceRef>;
   forkThread(input: ForkThreadInput): Promise<DesktopAppState>;
   reconcileWorktrees(): Promise<void>;
   syncAndListWorktrees(
@@ -121,7 +123,8 @@ export function createWorkspaceOwner(store: WorkspaceOwnerHost): WorkspaceOwner 
     syncCurrentWorkspace: () => syncCurrentWorkspace(store),
     createWorktree: (input) => worktree.createWorktree(store, input),
     removeWorktree: (input) => worktree.removeWorktree(store, input),
-    startThread: (input) => worktree.startThread(store, input),
+    startThread: (input, hooks) => worktree.startThread(store, input, hooks),
+    ensureWorkspace: (path) => ensureWorkspace(store, path),
     forkThread: (input) => worktree.forkThread(store, input),
     reconcileWorktrees: () => worktree.reconcileWorktrees(store),
     syncAndListWorktrees: (workspaces) => worktree.syncAndListWorktrees(store, workspaces),
@@ -180,6 +183,25 @@ async function addWorkspace(store: WorkspaceOwnerHost, path: string): Promise<De
       refreshWorktrees: true,
     });
   });
+}
+
+async function ensureWorkspace(store: WorkspaceOwnerHost, path: string): Promise<WorkspaceRef> {
+  await store.initialize();
+  const existing = store.workspaceState().workspaces.find((workspace) => workspace.path === path);
+  if (existing) {
+    const ref = store.workspaceRefFromState(existing.id);
+    if (ref) return ref;
+  }
+  const hadNoWorkspaces = store.workspaceState().workspaces.length === 0;
+  const synced = await store.driver.syncWorkspace(path);
+  if (hadNoWorkspaces) {
+    store.setRuntimeSnapshot(
+      synced.workspace.workspaceId,
+      await store.refreshRuntime(synced.workspace),
+    );
+  }
+  await store.refreshState({ clearLastError: true });
+  return synced.workspace;
 }
 
 async function renameWorkspace(

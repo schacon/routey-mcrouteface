@@ -76,6 +76,10 @@ import type {
 import type { SessionDriverEvent } from "@pi-gui/session-driver";
 import type { GenerateThreadTitleOptions } from "@pi-gui/pi-sdk-driver";
 import type { SessionRef, WorkspaceRef } from "@pi-gui/session-driver";
+import { LayaProcessClient } from "./router/laya-client";
+import { RouterOwner } from "./router/router-owner";
+import { createRouteyModeExtension } from "./router/routey-mode-extension";
+import { defaultDiscoveryRoots } from "./router/workspace-discovery";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -90,6 +94,7 @@ const windowTestMode = appTestMode ?? "foreground";
 const devReloadMarkersEnabled = process.env.PI_APP_DEV_RELOAD_MARKERS === "1";
 const TURN_CAPTURE_BACKSTOP_MS = 10_000;
 let store: DesktopAppStore;
+let router: RouterOwner | undefined;
 let extensionViewOwner: DesktopExtensionViewOwner | undefined;
 let windowOwner: WindowOwner;
 const themeManager = new ThemeManager();
@@ -194,6 +199,45 @@ function createStoreBackedOrchestrationRuntimeBridge(): OrchestrationRuntimeBrid
       return store.sendMessageToThreadToolResult(sessionRefFromExtensionContext(ctx), input);
     },
   };
+}
+
+/**
+ * The Laya helper is built into build/native during development. Tests run
+ * without it so routing stays deterministic (heuristics only).
+ */
+function layaHelperPath(): string {
+  const override = process.env.ROUTEY_LAYA_HELPER?.trim();
+  if (override) return override;
+  if (process.env.PI_APP_TEST_MODE) return "";
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "..", "MacOS", "routey-laya-helper")
+    : path.join(app.getAppPath(), "build", "native", "routey-laya-helper");
+}
+
+function createRouter(appStore: DesktopAppStore): RouterOwner {
+  // A session's routing changed, or (null) Laya's status did.
+  const broadcast = (sessionRef: SessionRef | null) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send(desktopIpc.routerChanged, sessionRef);
+    }
+  };
+  return new RouterOwner(
+    configuredUserDataDir,
+    new LayaProcessClient(layaHelperPath(), () => broadcast(null)),
+    defaultDiscoveryRoots(),
+    {
+      routableModels: (scratchDirectory) => appStore.routableModels(scratchDirectory),
+      knownWorkspaces: () =>
+        appStore.snapshot().workspaces.map((workspace) => ({
+          path: workspace.path,
+          usedAt: workspace.lastOpenedAt,
+        })),
+      userMessages: (sessionRef) => appStore.userMessages(sessionRef),
+      generatePurpose: (cwd, userMessages, model) =>
+        appStore.generateSessionPurpose(cwd, userMessages, model),
+      publish: broadcast,
+    },
+  );
 }
 
 function sessionRefFromExtensionContext(ctx: ExtensionContext): SessionRef {
@@ -895,6 +939,7 @@ app
           extensionViews.invalidateRuntime(target, generation),
       },
       extensionFactories: [
+        createRouteyModeExtension((sessionId) => router?.modeFor(sessionId)),
         createOrchestrationRuntimeExtension(orchestrationRuntimeBridge),
         createScheduledTaskRuntimeExtension(scheduledTaskRuntimeBridge, (ctx) => {
           try {
@@ -905,6 +950,10 @@ app
         }),
       ],
       inlineExtensionMetadata: [
+        {
+          displayName: "Routey modes",
+          description: "Apply the router's plan and answer modes to each turn",
+        },
         {
           displayName: "Thread orchestration",
           description: "Start child pi-gui threads from transcript tool calls",
@@ -925,6 +974,8 @@ app
       generateThreadTitleOverride: async (workspace, options) =>
         generateThreadTitleOverride?.(workspace, options),
     });
+    router = createRouter(store);
+    store.attachRouter(router);
     windowOwner = new WindowOwner(store, {
       onActiveWindowChanged: (window) => {
         mainWindow = window;
@@ -933,6 +984,7 @@ app
       },
     });
     await store.initialize();
+    router.warm();
     themeManager.setMode(store.snapshot().themeMode);
     integratedTerminalShell = (await store.getState()).integratedTerminalShell;
     stopPruningTerminals = store.subscribe((state) => {
@@ -1036,6 +1088,7 @@ app
         orchestration: store,
         scheduledTasks: store,
         settings: store,
+        router,
       },
       capabilities: {
         ping: () =>

@@ -127,6 +127,15 @@ interface ConversationOwnerHost {
   reloadTranscriptFromDriver(sessionRef: SessionRef): Promise<void>;
   publishSelectedTranscriptFor(sessionRef: SessionRef): void;
   clearPendingAutoTitle(sessionRef: SessionRef): void;
+  /**
+   * Routey's router: the model and thinking level this user turn should run
+   * with. Undefined leaves the session's current settings in place.
+   */
+  routeUserTurn(
+    sessionRef: SessionRef,
+    text: string,
+    attachments: readonly ComposerAttachment[],
+  ): Promise<{ provider: string; modelId: string; thinkingLevel: string } | undefined>;
 }
 
 type ComposerStore = ConversationOwnerHost;
@@ -741,6 +750,7 @@ async function sendMessageToSession(
   store.conversationState.composerAttachmentsBySession.delete(key);
   await store.persistComposerAttachments(key, []);
   try {
+    await applyRoute(store, sessionRef, key, text, attachments);
     await store.driver.sendUserMessage(sessionRef, {
       text,
       attachments: toSessionAttachments(attachments),
@@ -755,6 +765,36 @@ async function sendMessageToSession(
       store.publishSelectedTranscriptFor(sessionRef);
     }
     throw error;
+  }
+}
+
+/** Switches the session to the router's model and thinking level when they differ. */
+async function applyRoute(
+  store: ComposerStore,
+  sessionRef: SessionRef,
+  key: string,
+  text: string,
+  attachments: readonly ComposerAttachment[],
+): Promise<void> {
+  const route = await store.routeUserTurn(sessionRef, text, attachments);
+  if (!route) return;
+  const current = store.conversationState.sessionConfigBySession.get(key);
+  // A routed model that cannot be selected (no auth, server down) must not block
+  // the send; the turn runs on the session's current model instead.
+  try {
+    if (current?.provider !== route.provider || current.modelId !== route.modelId) {
+      await store.driver.setSessionModel(sessionRef, {
+        provider: route.provider,
+        modelId: route.modelId,
+      });
+      syncSessionConfig(store, key, { provider: route.provider, modelId: route.modelId });
+    }
+    if (current?.thinkingLevel !== route.thinkingLevel) {
+      await store.driver.setSessionThinkingLevel(sessionRef, route.thinkingLevel);
+      syncSessionConfig(store, key, { thinkingLevel: route.thinkingLevel });
+    }
+  } catch (error) {
+    console.error("[router] could not apply the routed model; keeping the current one", error);
   }
 }
 

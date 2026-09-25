@@ -2,9 +2,10 @@ import { JsonCatalogStore } from "@pi-gui/catalogs/node";
 import { sessionKey } from "@pi-gui/session-driver";
 import type { SessionSchemaInfo } from "@pi-gui/session-driver";
 import type { BrowserWindow } from "electron";
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
+import type { RoutableModels, RouterOwner } from "../router/router-owner";
 import {
   applyHostUiRequestToExtensionUiState,
   type GenerateThreadTitleOptions,
@@ -384,6 +385,27 @@ export class DesktopAppStore {
       reloadTranscriptFromDriver: (sessionRef) => this.reloadTranscriptFromDriver(sessionRef),
       publishSelectedTranscriptFor: (sessionRef) => this.publishSelectedTranscriptFor(sessionRef),
       clearPendingAutoTitle: (sessionRef) => this.clearPendingAutoTitle(sessionRef),
+      routeUserTurn: async (sessionRef, text, attachments) => {
+        const cwd = this.getWorkspacePath(sessionRef.workspaceId);
+        if (!this.router || !cwd) return undefined;
+        try {
+          const decision = await this.router.routeUserTurn(
+            sessionRef,
+            cwd,
+            text,
+            attachments.some((attachment) => attachment.kind === "image"),
+          );
+          return {
+            provider: decision.provider,
+            modelId: decision.modelId,
+            thinkingLevel: decision.thinkingLevel,
+          };
+        } catch (error) {
+          // Routing must never block a send; the session keeps its current settings.
+          console.error("[router] routing failed; sending with current settings", error);
+          return undefined;
+        }
+      },
     });
 
     this.workspaceOwner = createWorkspaceOwner({
@@ -1150,6 +1172,93 @@ export class DesktopAppStore {
 
   async startThread(input: StartThreadInput): Promise<DesktopAppState> {
     return this.workspaceOwner.startThread(input);
+  }
+
+  /* ── Routey router ─────────────────────────────────────── */
+
+  private router: RouterOwner | undefined;
+
+  attachRouter(router: RouterOwner): void {
+    this.router = router;
+  }
+
+  /**
+   * Starts a session wherever the router decides: it picks the working
+   * directory, model, thinking level and mode from the prompt alone.
+   */
+  async startRoutedSession(input: {
+    readonly prompt: string;
+    readonly attachments?: readonly ComposerAttachment[];
+  }): Promise<DesktopAppState> {
+    await this.initialize();
+    const router = this.router;
+    if (!router) return this.withError("The router is not available.");
+    return this.withErrorHandling(async () => {
+      const attachments = input.attachments ?? [];
+      const pending = await router.decideFirstTurn(
+        input.prompt,
+        attachments.some((attachment) => attachment.kind === "image"),
+      );
+      const { decision } = pending.record;
+      const workspace = await this.workspaceOwner.ensureWorkspace(decision.cwd);
+      return this.workspaceOwner.startThread(
+        {
+          rootWorkspaceId: workspace.workspaceId,
+          environment: "local",
+          prompt: input.prompt,
+          attachments,
+          provider: decision.provider,
+          modelId: decision.modelId,
+          thinkingLevel: decision.thinkingLevel,
+        },
+        { onSessionCreated: (sessionRef) => router.adoptFirstTurn(sessionRef, pending) },
+      );
+    });
+  }
+
+  /** Models the router can pick, from any loaded runtime (they share pi's global config). */
+  async routableModels(scratchDirectory: string): Promise<RoutableModels> {
+    let runtime = this.runtimeByWorkspace.values().next().value as RuntimeSnapshot | undefined;
+    if (!runtime) {
+      await mkdir(scratchDirectory, { recursive: true });
+      runtime = await this.driver.runtimeSupervisor.refreshRuntime({
+        workspaceId: scratchDirectory,
+        path: scratchDirectory,
+        displayName: basename(scratchDirectory),
+      });
+    }
+    const { defaultProvider, defaultModelId } = runtime.settings;
+    return {
+      models: runtime.models
+        .filter((model) => model.available)
+        .map((model) => ({
+          provider: model.providerId,
+          modelId: model.modelId,
+          label: model.label,
+          supportsImages: model.supportsImages,
+        })),
+      ...(defaultProvider && defaultModelId
+        ? { fallback: { provider: defaultProvider, modelId: defaultModelId } }
+        : {}),
+    };
+  }
+
+  /** User messages of a session, oldest first, from the loaded transcript. */
+  userMessages(sessionRef: SessionRef): readonly string[] {
+    return (this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? []).flatMap(
+      (message) => (message.kind === "message" && message.role === "user" ? [message.text] : []),
+    );
+  }
+
+  generateSessionPurpose(
+    cwd: string,
+    userMessages: readonly string[],
+    model: { readonly provider: string; readonly modelId: string } | undefined,
+  ): Promise<string | null> {
+    return this.driver.generateSessionPurpose(
+      { workspaceId: cwd, path: cwd, displayName: basename(cwd) },
+      { userMessages, ...(model ? { model } : {}) },
+    );
   }
 
   async createSession(input: CreateSessionInput): Promise<DesktopAppState> {

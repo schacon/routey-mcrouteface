@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import type { WorktreeCatalogEntry } from "@pi-gui/catalogs";
-import type { WorkspaceRef } from "@pi-gui/session-driver";
+import type { SessionRef, WorkspaceRef } from "@pi-gui/session-driver";
 import type {
   CreateWorktreeInput,
   DesktopAppState,
@@ -94,9 +94,15 @@ export async function removeWorktree(
   });
 }
 
+export interface StartThreadHooks {
+  /** Runs after the session exists and before its first message is sent. */
+  readonly onSessionCreated?: (sessionRef: SessionRef) => void;
+}
+
 export async function startThread(
   store: WorkspaceOwnerHost,
   input: StartThreadInput,
+  hooks: StartThreadHooks = {},
 ): Promise<DesktopAppState> {
   await store.initialize();
   const rootWorkspace = store.workspaceRefFromState(input.rootWorkspaceId);
@@ -152,6 +158,7 @@ export async function startThread(
       throw error;
     }
     store.seedSession(session);
+    hooks.onSessionCreated?.(session.ref);
     const autoTitleAbortController = new AbortController();
     const pendingAutoTitle = {
       requestToken: randomUUID(),

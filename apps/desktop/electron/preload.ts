@@ -27,6 +27,7 @@ import {
 } from "../contracts/ipc";
 import type { ClipboardImageRead } from "../contracts/composer-attachments";
 import type { SaveTaskWorkbenchTemplateInput, TaskWorkbenchTemplate } from "../contracts/workbench";
+import type { RouterConfig, RouterOverview, RouterSessionInfo } from "../contracts/router";
 import type {
   TurnChangesInput,
   TurnChangesResult,
@@ -550,4 +551,22 @@ contextBridge.exposeInMainWorld("piApp", {
     };
   },
   relaunchApplication: () => ipcRenderer.invoke(desktopIpc.relaunchApplication) as Promise<void>,
+  startRoutedSession: (input: {
+    readonly prompt: string;
+    readonly attachments?: readonly ComposerAttachment[];
+  }) => ipcRenderer.invoke(desktopIpc.startRoutedSession, input) as Promise<DesktopAppState>,
+  getRouterSessionInfo: (target: SessionRef) =>
+    ipcRenderer.invoke(desktopIpc.getRouterSessionInfo, target) as Promise<RouterSessionInfo>,
+  getRouterOverview: () =>
+    ipcRenderer.invoke(desktopIpc.getRouterOverview) as Promise<RouterOverview>,
+  setRouterConfig: (config: RouterConfig) =>
+    ipcRenderer.invoke(desktopIpc.setRouterConfig, config) as Promise<RouterOverview>,
+  onRouterChanged: (listener: (target: SessionRef | null) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, target: SessionRef | null) =>
+      listener(target);
+    ipcRenderer.on(desktopIpc.routerChanged, handler);
+    return () => {
+      ipcRenderer.removeListener(desktopIpc.routerChanged, handler);
+    };
+  },
 } satisfies PiDesktopApi);
