@@ -46,9 +46,9 @@ function titles(actions: readonly { readonly title: string }[]): string[] {
 test("an open thread lists rename, pin, archive, scheduled task and copy with shortcut hints", () => {
   const actions = buildThreadActions({ workspaceId: "ws", session: session() }, handlers("darwin"));
   expect(titles(actions)).toEqual([
-    "Rename thread",
-    "Pin thread",
-    "Archive thread",
+    "Rename session",
+    "Pin session",
+    "Archive session",
     "Add scheduled task…",
     "Copy session ID",
   ]);
@@ -65,9 +65,9 @@ test("state changes the list: pinned, unseen, scheduled and archived threads", (
     recorder,
   );
   expect(titles(actions)).toEqual([
-    "Rename thread",
-    "Unpin thread",
-    "Archive thread",
+    "Rename session",
+    "Unpin session",
+    "Archive session",
     "Mark as read",
     "Edit scheduled task…",
     "Copy session ID",
@@ -80,8 +80,8 @@ test("state changes the list: pinned, unseen, scheduled and archived threads", (
     handlers("linux"),
   );
   expect(titles(archived)).toEqual([
-    "Rename thread",
-    "Restore thread",
+    "Rename session",
+    "Restore session",
     "Add scheduled task…",
     "Copy session ID",
   ]);

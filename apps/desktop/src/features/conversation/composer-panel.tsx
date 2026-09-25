@@ -185,7 +185,7 @@ export function ComposerPanel({
           onEnableMentionExtension={onEnableMentionExtension}
           textareaLabel="Composer"
           textareaTestId="composer"
-          textareaPlaceholder="Ask pi to inspect the repo, run a fix, or continue the current thread..."
+          textareaPlaceholder="Continue this session. Each message is routed on its own."
           extensionDock={extensionDock}
           extensionDockExpanded={extensionDockExpanded}
           onToggleExtensionDock={onToggleExtensionDock}
