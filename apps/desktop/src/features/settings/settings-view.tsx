@@ -12,18 +12,21 @@ import type {
 import type {
   CustomProviderConfig,
   DesktopNotificationPermissionStatus,
+  PiDesktopApi,
 } from "../../../contracts/ipc";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsGeneralSection } from "./settings-general-section";
 import { SettingsModelsSection } from "./settings-models-section";
 import { SettingsNotificationsSection } from "./settings-notifications-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
+import { SettingsRouterSection } from "./settings-router-section";
 import { type SettingsSection, settingsSectionDefinition } from "./settings-sections";
 import { SettingsShortcutsSection } from "./settings-shortcuts-section";
 
 export type { SettingsSection } from "./settings-sections";
 
 interface SettingsViewProps {
+  readonly api: PiDesktopApi;
   readonly workspace?: WorkspaceRecord;
   readonly runtime?: RuntimeSnapshot;
   readonly section: SettingsSection;
@@ -62,6 +65,7 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({
+  api,
   workspace,
   runtime,
   section,
@@ -157,6 +161,8 @@ export function SettingsView({
           ) : null}
 
           {section === "shortcuts" ? <SettingsShortcutsSection platform={platform} /> : null}
+
+          {section === "router" ? <SettingsRouterSection api={api} /> : null}
 
           {section === "providers" ? (
             <SettingsProvidersSection

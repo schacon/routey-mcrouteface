@@ -433,6 +433,7 @@ export function SecondarySurfaces({
         />
       ) : (
         <SettingsView
+          api={api}
           workspace={settingsWorkspace}
           runtime={
             // Providers reads the default model to flag its provider, so it needs the same
