@@ -4,7 +4,7 @@
   "version": "0.1.0-beta.40",
   "author": "Matthew Lam",
   "license": "MIT",
-  "description": "Codex-style desktop shell for pi",
+  "description": "Routey McRouteface: a routed agent desktop built on pi",
   "homepage": "https://github.com/minghinmatthewlam/pi-gui",
   "main": "out/main/main.js",
   "scripts": {
