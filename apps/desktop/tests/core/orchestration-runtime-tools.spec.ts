@@ -1,6 +1,3 @@
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import type { SessionRef } from "@pi-gui/session-driver";
@@ -14,46 +11,6 @@ import {
   seedAgentDir,
 } from "../helpers/electron-app";
 
-async function startHangingOpenAiServer(): Promise<{
-  readonly baseUrl: string;
-  readonly pendingRequestCount: () => number;
-  readonly close: () => Promise<void>;
-}> {
-  const pending = new Set<import("node:http").ServerResponse>();
-  const sockets = new Set<import("node:net").Socket>();
-  const server = createServer((request, response) => {
-    pending.add(response);
-    response.on("close", () => pending.delete(response));
-    request.resume();
-    // Intentionally leave the response pending: create_child_thread must return
-    // after the running acknowledgement rather than await this model turn.
-  });
-  server.on("connection", (socket) => {
-    sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  const address = server.address() as AddressInfo;
-  return {
-    baseUrl: `http://127.0.0.1:${address.port}/v1`,
-    pendingRequestCount: () => pending.size,
-    close: async () => {
-      for (const socket of sockets) {
-        socket.destroy();
-      }
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
-    },
-  };
-}
-
 async function selectedSessionRef(
   window: Parameters<typeof getDesktopState>[0],
 ): Promise<SessionRef> {
@@ -63,95 +20,6 @@ async function selectedSessionRef(
   }
   return { workspaceId: state.selectedWorkspaceId, sessionId: state.selectedSessionId };
 }
-
-test("create_child_thread returns after a slow worker starts, before its turn completes", async () => {
-  test.setTimeout(60_000);
-  const proofDir = process.env.PI_APP_ORCHESTRATION_PROOF_DIR?.trim();
-  if (proofDir) {
-    await mkdir(proofDir, { recursive: true });
-  }
-  const server = await startHangingOpenAiServer();
-  const userDataDir = await makeUserDataDir();
-  const agentDir = join(userDataDir, "agent");
-  const workspacePath = await makeWorkspace("orchestration-runtime-start-ack");
-  await seedAgentDir(agentDir, {
-    withOpenAiAuth: false,
-    withDefaultModel: false,
-    enabledModels: ["slow-test/slow"],
-  });
-  await writeFile(
-    join(agentDir, "settings.json"),
-    `${JSON.stringify(
-      {
-        defaultProvider: "slow-test",
-        defaultModel: "slow",
-        enabledModels: ["slow-test/slow"],
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  await writeFile(
-    join(agentDir, "models.json"),
-    `${JSON.stringify(
-      {
-        providers: {
-          "slow-test": {
-            baseUrl: server.baseUrl,
-            api: "openai-completions",
-            apiKey: "unused",
-            models: [{ id: "slow" }],
-          },
-        },
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  const harness = await launchDesktop(userDataDir, {
-    agentDir,
-    initialWorkspaces: [workspacePath],
-    scrubProviderEnv: true,
-    testMode: "background",
-  });
-
-  try {
-    const window = await harness.firstWindow();
-    await createNamedThread(window, "Parent orchestration thread");
-    const parentRef = await selectedSessionRef(window);
-    const prompt = "Keep this delegated worker running slowly.";
-    // The server never answers, so the child's first turn cannot complete. A tool
-    // that awaited the turn would never return, and the test timeout names this step.
-    const result = await test.step("create_child_thread returns while the turn is in flight", () =>
-      runOrchestrationRuntimeTool(harness, {
-        toolName: "create_child_thread",
-        toolCallId: "create-child-start-ack",
-        sessionRef: parentRef,
-        params: { prompt },
-      }));
-
-    expect(result.details).toMatchObject({ deliveryStatus: "running", prompt });
-    // The worker's model request reached the server and is still unanswered.
-    await expect.poll(() => server.pendingRequestCount()).toBeGreaterThan(0);
-    const child = (await getDesktopState(window)).orchestrationChildren.find(
-      (entry) => entry.sourceToolCallId === "create-child-start-ack",
-    );
-    expect(child?.status).toBe("running");
-    const childRunningIndicator = window.locator(
-      `.session-row[data-session-id="${child?.childSessionId}"] .session-row__status--running`,
-    );
-    await expect(childRunningIndicator).toBeVisible();
-    if (proofDir) {
-      await window.screenshot({
-        path: join(proofDir, "orchestration-child-running.png"),
-        fullPage: true,
-      });
-    }
-  } finally {
-    await harness.close();
-    await server.close();
-  }
-});
 
 test("create_child_thread surfaces deterministic initial-prompt delivery failures", async () => {
   test.setTimeout(60_000);

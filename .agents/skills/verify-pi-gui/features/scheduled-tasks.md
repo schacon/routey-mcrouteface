@@ -20,7 +20,7 @@ Users create local on-device schedules from the Scheduled sidebar, a thread menu
 
 Preconditions: isolated profile and fixture folder. Core coverage is credential-free; do not fake `auth.json` / `~/.pi`.
 
-- **Run:** `PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 pnpm --filter @pi-gui/desktop run test:e2e:runner -- apps/desktop/tests/core/scheduled-tasks.spec.ts apps/desktop/tests/core/scheduled-task-runtime-tools.spec.ts`. No `prove.sh` lane drives scheduled tasks.
+- **Run:** `PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 pnpm --filter @pi-gui/desktop run test:e2e:runner -- apps/desktop/tests/core/scheduled-tasks.spec.ts`. Scheduled tasks now live in Settings. No `prove.sh` lane drives scheduled tasks.
 - **List/create:** click Scheduled, Set up manually, fill title and instruction, Create. Active should show the row and next-run copy. Pause, then restart the same profile.
 - **Interview:** Create with pi. Composer must contain the interview prompt and the transcript must have no assistant row.
 - **Fire:** bind a due once/interval task to the selected thread, call the test-mode fire hook, require `sent-by-scheduled-task`.

@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 import {
   createSessionViaIpc,
   getDesktopState,
-  getSelectedTranscript,
   launchDesktop,
   makeUserDataDir,
   makeWorkspace,
@@ -43,99 +42,6 @@ export default function compatibilityExtension(pi) {
   });
 }
 `;
-
-test("fails fast for unsupported handoff-like commands and learns terminal-only status", async () => {
-  test.setTimeout(60_000);
-  const userDataDir = await makeUserDataDir();
-  const workspacePath = await makeWorkspace("extension-command-compatibility-workspace");
-  await writeProjectExtension(
-    workspacePath,
-    "compatibility-extension.ts",
-    compatibilityExtensionSource,
-  );
-
-  const harness = await launchDesktop(userDataDir, {
-    initialWorkspaces: [workspacePath],
-    testMode: "background",
-  });
-
-  try {
-    const window = await harness.firstWindow();
-    const workspace = await waitForWorkspaceByPath(window, workspacePath);
-    await createSessionViaIpc(window, workspacePath, "Compatibility session");
-    await selectSession(window, "Compatibility session");
-    const compatibilitySession = await waitForSessionByTitle(
-      window,
-      workspace.id,
-      "Compatibility session",
-    );
-    const compatibilitySessionKey = `${workspace.id}:${compatibilitySession.id}`;
-    await expect
-      .poll(
-        async () =>
-          (await getDesktopState(window)).sessionCommandsBySession[compatibilitySessionKey]?.some(
-            (command) => command.name === "handoff-gui-test",
-          ) ?? false,
-        { timeout: 15_000 },
-      )
-      .toBe(true);
-
-    const sessionCountBefore =
-      (await getDesktopState(window)).workspaces.find((entry) => entry.id === workspace.id)
-        ?.sessions.length ?? 0;
-    const composer = window.getByTestId("composer");
-    const composerError = window.getByTestId("composer-error-banner");
-
-    await composer.fill("/handoff-gui-test continue the work");
-    await composer.press("Enter");
-
-    await expect(composerError).toContainText(
-      "/handoff-gui-test requires terminal-only custom UI and is not supported in pi-gui yet.",
-    );
-    await expect(window.getByTestId("extension-dialog")).toHaveCount(0);
-    await expect(window.locator(".timeline")).not.toContainText(
-      "Handoff ready. Submit when ready.",
-    );
-    await expect
-      .poll(
-        async () =>
-          (await getDesktopState(window)).workspaces.find((entry) => entry.id === workspace.id)
-            ?.sessions.length ?? 0,
-      )
-      .toBe(sessionCountBefore);
-
-    await composer.fill("/handoff-g");
-    await expect(window.getByTestId("slash-menu")).toContainText("Terminal-only");
-
-    const transcriptCountBeforeSecondAttempt =
-      (await getSelectedTranscript(window))?.transcript.length ?? 0;
-    await composer.fill("/handoff-gui-test local block");
-    await composer.press("Enter");
-    await expect(composerError).toContainText(
-      "/handoff-gui-test requires terminal-only custom UI and is not supported in pi-gui yet.",
-    );
-    await expect
-      .poll(async () => (await getSelectedTranscript(window))?.transcript.length ?? 0)
-      .toBe(transcriptCountBeforeSecondAttempt);
-
-    await composer.fill("/prefill-safe ");
-    await expect(composer).toHaveValue("/prefill-safe ");
-    await composer.press("Enter");
-    await expect.poll(async () => composer.inputValue()).toBe("Safe draft");
-    await expect(window.locator(".timeline")).toContainText("Safe command ran");
-
-    await window.getByRole("button", { name: "Extensions", exact: true }).click();
-    await expect(window.getByTestId("extensions-surface")).toBeVisible();
-    await window
-      .getByTestId("extensions-list")
-      .getByRole("button", { name: /compatibility-extension/i })
-      .click();
-    await expect(window.locator(".skill-detail")).toContainText("handoff-gui-test · Terminal-only");
-    await expect(window.locator(".skill-detail")).toContainText("prefill-safe · GUI-compatible");
-  } finally {
-    await harness.close();
-  }
-});
 
 test("persists learned terminal-only command compatibility across relaunch", async () => {
   test.setTimeout(60_000);

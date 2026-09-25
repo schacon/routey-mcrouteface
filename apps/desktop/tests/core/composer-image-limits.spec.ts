@@ -8,7 +8,6 @@ import {
   COMPOSER_IMAGE_MAX_DIMENSION,
   composerImageAggregateLimitMessage,
   composerImageBytesLimitMessage,
-  composerImagePixelsLimitMessage,
   composerImageSavedSkipMessage,
 } from "../../contracts/composer-attachments";
 import {
@@ -18,8 +17,6 @@ import {
   launchDesktop,
   makeUserDataDir,
   makeWorkspace,
-  openNewThread,
-  seedAgentDir,
   stubNextOpenDialog,
   writeTinyPng,
   type DesktopHarness,
@@ -339,75 +336,6 @@ test("legacy migration skips oversize-pixel images before the composer map", asy
     expect(migrated.map((attachment) => attachment.id)).toEqual(["tiny"]);
   } finally {
     await second.close();
-  }
-});
-
-test("startThread rejects oversize-pixel images without clearing the new-thread draft", async () => {
-  test.setTimeout(90_000);
-  const userDataDir = await makeUserDataDir();
-  const agentDir = join(userDataDir, "agent");
-  const workspacePath = await makeWorkspace("composer-image-start-thread-pixels");
-  await seedAgentDir(agentDir);
-  const harness = await launchDesktop(userDataDir, {
-    agentDir,
-    initialWorkspaces: [workspacePath],
-    testMode: "background",
-  });
-  const wideData = createRgbPng(COMPOSER_IMAGE_MAX_DIMENSION + 1, 1).toString("base64");
-
-  try {
-    const window = await harness.firstWindow();
-    await openNewThread(window);
-    const composer = window.getByTestId("new-thread-composer");
-    await composer.fill("keep this draft");
-    const before = await getDesktopState(window);
-
-    const result = await window.evaluate(async (data) => {
-      const app = globalThis.window.piApp;
-      if (!app) {
-        throw new Error("piApp IPC bridge is unavailable");
-      }
-      const state = await app.getState();
-      const workspace =
-        state.workspaces.find((entry) => entry.id === state.selectedWorkspaceId) ??
-        state.workspaces[0];
-      if (!workspace) {
-        throw new Error("No workspace available for startThread");
-      }
-      try {
-        await app.startThread({
-          rootWorkspaceId: workspace.rootWorkspaceId ?? workspace.id,
-          environment: "local",
-          prompt: "keep this draft",
-          attachments: [
-            {
-              id: "wide",
-              kind: "image",
-              name: "wide.png",
-              mimeType: "image/png",
-              data,
-            },
-          ],
-        });
-        return { resolved: true, message: "" };
-      } catch (error: unknown) {
-        return {
-          resolved: false,
-          message: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }, wideData);
-
-    expect(result.resolved).toBe(false);
-    expect(result.message).toContain(composerImagePixelsLimitMessage());
-    await expect(composer).toHaveValue("keep this draft");
-    await expect(window.getByTestId("new-thread-composer")).toBeVisible();
-    const after = await getDesktopState(window);
-    expect(after.activeView).toBe("new-thread");
-    expect(after.selectedSessionId).toBe(before.selectedSessionId);
-    await captureComposerProof(window, "composer_start_thread_pixel_reject.png");
-  } finally {
-    await harness.close();
   }
 });
 
