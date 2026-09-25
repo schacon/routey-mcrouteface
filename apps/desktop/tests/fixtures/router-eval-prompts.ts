@@ -295,3 +295,175 @@ export const ROUTER_EVAL_CASES: readonly RouterEvalCase[] = [
     project: "scratch",
   },
 ];
+
+/**
+ * Held-out prompts, written after the cues were tuned against the set above.
+ * Never tune cues or questions against these: they measure how routing
+ * generalizes. Add new tuning cases to ROUTER_EVAL_CASES instead.
+ */
+export const ROUTER_HELDOUT_CASES: readonly RouterEvalCase[] = [
+  {
+    prompt: "the login page in blogerator is broken on mobile, can you fix it",
+    kind: "coding",
+    mode: "execute",
+    project: "blogerator",
+  },
+  {
+    prompt: "walk me through how sessions are persisted in pi-gui",
+    kind: "coding",
+    mode: "plan",
+    project: "pi-gui",
+  },
+  {
+    prompt: "add a --dry-run flag to the git-merge-26 cli",
+    kind: "coding",
+    mode: "execute",
+    project: "git-merge-26",
+  },
+  {
+    prompt: "what would it take to port slide-engine to Deno?",
+    kind: "coding",
+    mode: "plan",
+    project: "slide-engine",
+  },
+  {
+    prompt: "gitbutler: make the commit message editor autosave",
+    kind: "coding",
+    mode: "execute",
+    project: "gitbutler",
+  },
+  {
+    prompt: "clean up the dead code in pi-gui's settings folder",
+    kind: "coding",
+    mode: "execute",
+    project: "pi-gui",
+  },
+  {
+    prompt: "write a Go function that parses ISO 8601 durations",
+    kind: "coding",
+    mode: "execute",
+    project: "scratch",
+  },
+  { prompt: "my docker container can't reach the host network, help", kind: "coding" },
+  {
+    prompt: "generate a SQL query that finds duplicate emails in a users table",
+    kind: "coding",
+    project: "scratch",
+  },
+  {
+    prompt: "create a small Flask app with a health check endpoint",
+    kind: "coding",
+    mode: "execute",
+    project: "scratch",
+  },
+  { prompt: "why is my React component rendering twice?", kind: "coding", mode: "plan" },
+  {
+    prompt: "how far is the moon from earth?",
+    kind: "general",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "what's a good name for a golden retriever puppy?",
+    kind: "general",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "explain the difference between weather and climate",
+    kind: "general",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "how do I get red wine out of a carpet?",
+    kind: "general",
+    mode: "answer",
+    project: "scratch",
+  },
+  { prompt: "who wrote Pride and Prejudice?", kind: "general", mode: "answer", project: "scratch" },
+  {
+    prompt: "prefer the cheaper hosted model for writing tasks",
+    kind: "app",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "show me which projects you can work in",
+    kind: "app",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "turn off thinking for quick questions",
+    kind: "app",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "make gpt-oss the default frontier model",
+    kind: "app",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "why did you pick that model for my last message?",
+    kind: "app",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "write a thank-you note to my team for shipping the release",
+    kind: "writing",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "help me word a polite complaint to my landlord about the heating",
+    kind: "writing",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "turn these bullet points into a paragraph: fast, private, local",
+    kind: "writing",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "write a short story about a robot learning to paint",
+    kind: "writing",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "suggest a catchy title for my talk about agent routing",
+    kind: "writing",
+    mode: "answer",
+    project: "scratch",
+  },
+  {
+    prompt: "what are the best-reviewed noise cancelling headphones right now?",
+    kind: "research",
+    mode: "plan",
+    project: "scratch",
+  },
+  {
+    prompt: "find out what changed in the latest Node.js release",
+    kind: "research",
+    mode: "plan",
+    project: "scratch",
+  },
+  {
+    prompt: "who won the most recent Formula 1 race?",
+    kind: "research",
+    mode: "plan",
+    project: "scratch",
+  },
+  {
+    prompt: "gather sources on the health effects of intermittent fasting",
+    kind: "research",
+    mode: "plan",
+    project: "scratch",
+  },
+];

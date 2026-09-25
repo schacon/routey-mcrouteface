@@ -88,15 +88,17 @@ export function layaState(prompt: string): string {
 }
 
 const CODING_CUE =
-  /\b(refactor|debug|bug|stack ?trace|compile|build|lint|unit tests?|tests?|function|method|class|variable|repo(sitory)?|commit|branch|merge|pull request|script|code|api|endpoint|component|css|html|typescript|javascript|python|rust|swift|golang|java|sql|regex|toggle|deploy)\b/i;
+  /\b(refactor|debug|bug|stack ?trace|compile|build|lint|unit tests?|tests?|function|method|class|variable|repo(sitory)?|commit|branch|merge|pull request|script|code|api|endpoint|component|css|html|typescript|javascript|python|rust|swift|golang|java|sql|regex|toggle|deploy|bash|shell|one-liner|command line|terminal command|git)\b/i;
 const FILE_CUE =
   /\b[\w./-]+\.(ts|tsx|js|jsx|mjs|py|rs|go|swift|java|rb|c|cc|cpp|h|css|html|json|ya?ml|toml|sh)\b/i;
+// Settings phrasing only: bare words like "model" or "routing" also appear in coding
+// and research prompts, so they do not count on their own.
 const APP_CUE =
-  /\b(from now on|always use|never use|use (a |the )?(local|hosted|frontier|cheaper|faster|bigger|smaller|different) model|which models?|what models?|thinking level|default model|your settings|routing|router settings)\b/i;
+  /\b(from now on|always use|never use|don'?t use|stop using|stop routing|from routing|use (a |the )?(local|hosted|frontier|cheaper|faster|bigger|smaller|different) models?|(local|hosted|frontier) models? for|as an? (local|hosted|frontier)( \w+)? model|(which|what) models? (do|are|have|can) you|your (current )?settings|thinking level|default model|router settings)\b/i;
 const RESEARCH_CUE =
-  /\b(latest|news|recent(ly)?|today'?s|this week|current(ly)?|papers?|search the web|look up|sources?)\b/i;
+  /\b(latest|news|recent(ly)?|today'?s|this week|current(ly)?|papers?|search the web|look up|sources?|stock market|people saying)\b/i;
 const WRITING_CUE =
-  /\b(draft|proofread|rewrite|write (an?|the|my) (email|letter|post|essay|blog post|tweet|message|bio|cover letter)|edit (my|this) (text|essay|email|post))\b/i;
+  /\b(draft|proofread|rewrite|haiku|poem|limerick|lyrics|tweet|punchier|write (an?|the|my) (email|letter|post|essay|blog post|tweet|message|bio|cover letter|story)|edit (my|this) (text|essay|email|post))\b/i;
 const READ_ONLY_CUE =
   /\b(explain|how does|how do|why does|what does|plan|planning|review|walk me through|don'?t change|do not change|without changing|read[- ]only)\b/i;
 const EXPLICIT_NO_CHANGES_CUE = /\b(don'?t change|do not change|without changing|read[- ]only)\b/i;
@@ -152,10 +154,11 @@ export interface SignalResult {
  */
 export function combineSignals({ prompt, answers, knownProjects }: SignalInput): SignalResult {
   const cues: RouterCue[] = [];
+  // Every cue that matches is recorded, even when Laya already agreed, because
+  // pickTaskKind prefers the kinds a cue named.
   const raise = (current: number, floor: number, signal: string, reason: string) => {
-    if (current >= floor) return current;
     cues.push({ signal, reason });
-    return floor;
+    return Math.max(current, floor);
   };
 
   const mentionedProject = findMentionedProject(prompt, knownProjects);
@@ -187,11 +190,12 @@ export function combineSignals({ prompt, answers, knownProjects }: SignalInput):
   const writeMatch = WRITE_CUE.exec(prompt);
   if (noChangesMatch) {
     readOnly = raise(readOnly, 0.95, "readOnly", `says "${noChangesMatch[0]}"`);
+  } else if (readOnlyMatch && (!writeMatch || readOnlyMatch.index < writeMatch.index)) {
+    // "why does the build fail after the update": the question comes first.
+    readOnly = raise(readOnly, 0.8, "readOnly", `asks "${readOnlyMatch[0]}"`);
   } else if (writeMatch) {
     if (readOnly > 0.3) cues.push({ signal: "readOnly", reason: `asks to "${writeMatch[0]}"` });
     readOnly = Math.min(readOnly, 0.3);
-  } else if (readOnlyMatch) {
-    readOnly = raise(readOnly, 0.8, "readOnly", `asks to "${readOnlyMatch[0]}"`);
   }
 
   let difficulty = expectedScore(answers, "difficulty") ?? 1.5;
@@ -226,9 +230,15 @@ export function combineSignals({ prompt, answers, knownProjects }: SignalInput):
  */
 export function pickTaskKind(signals: RouterSignals, cues: readonly RouterCue[]): TaskKind {
   if (cues.some((cue) => cue.signal === "kind.app")) return "app";
+  // When keyword cues fired, choose among the kinds they named; Laya's yes/no
+  // scores decide alone only when no cue did (it confidently mislabels coding
+  // prompts as settings or research on the eval set).
+  const cued = TASK_KIND_CANDIDATES.filter((kind) =>
+    cues.some((cue) => cue.signal === `kind.${kind}`),
+  );
   let best: TaskKind = "general";
   let bestScore = 0.5;
-  for (const kind of ["coding", "app", "writing", "research"] as const) {
+  for (const kind of cued.length > 0 ? cued : TASK_KIND_CANDIDATES) {
     const score = signals.kindScores[kind];
     if (score >= bestScore) {
       best = kind;
@@ -237,6 +247,8 @@ export function pickTaskKind(signals: RouterSignals, cues: readonly RouterCue[])
   }
   return best;
 }
+
+const TASK_KIND_CANDIDATES = ["coding", "app", "writing", "research"] as const;
 
 export function toQuestionAnswers(
   questions: readonly LayaWireQuestion[],

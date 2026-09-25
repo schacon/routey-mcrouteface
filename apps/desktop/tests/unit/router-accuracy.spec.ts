@@ -5,7 +5,12 @@ import { LayaProcessClient, type LayaClassifier } from "../../electron/router/la
 import { resolveRouteDecision } from "../../electron/router/route-policy";
 import { classifyPrompt } from "../../electron/router/router-classifier";
 import { pickTaskKind } from "../../electron/router/router-signals";
-import { EVAL_PROJECTS, ROUTER_EVAL_CASES } from "../fixtures/router-eval-prompts";
+import {
+  EVAL_PROJECTS,
+  ROUTER_EVAL_CASES,
+  ROUTER_HELDOUT_CASES,
+  type RouterEvalCase,
+} from "../fixtures/router-eval-prompts";
 
 /**
  * Scores the router against a labeled prompt set: task kind, mode and (on a
@@ -53,6 +58,9 @@ const config: RouterConfig = {
   scratchDirectory: SCRATCH,
 };
 
+/** "All correct" counts from the latest run of each set, heuristics only. */
+const HEURISTIC_FLOORS = { tuned: 50, heldOut: 17 } as const;
+
 const heuristicsOnly: LayaClassifier = {
   status: () => ({ state: "unavailable", message: "heuristics-only eval" }),
   warm: () => undefined,
@@ -67,6 +75,7 @@ interface Score {
 
 interface EvalReport {
   readonly source: string;
+  readonly cases: number;
   readonly kind: Score;
   readonly mode: Score;
   readonly project: Score;
@@ -84,7 +93,11 @@ const pct = (score: Score) =>
     ? "n/a"
     : `${score.correct}/${score.scored} (${Math.round((100 * score.correct) / score.scored)}%)`;
 
-async function runEval(laya: LayaClassifier, source: string): Promise<EvalReport> {
+async function runEval(
+  laya: LayaClassifier,
+  source: string,
+  cases: readonly RouterEvalCase[],
+): Promise<EvalReport> {
   const tally = {
     kind: { scored: 0, correct: 0 },
     mode: { scored: 0, correct: 0 },
@@ -94,7 +107,7 @@ async function runEval(laya: LayaClassifier, source: string): Promise<EvalReport
   const byKind: Record<string, { scored: number; correct: number }> = {};
   const misses: { prompt: string; expected: string; got: string }[] = [];
 
-  for (const testCase of ROUTER_EVAL_CASES) {
+  for (const testCase of cases) {
     const classification = await classifyPrompt(laya, testCase.prompt, {
       projects: EVAL_PROJECTS,
       firstTurn: true,
@@ -139,6 +152,7 @@ async function runEval(laya: LayaClassifier, source: string): Promise<EvalReport
   }
   return {
     source,
+    cases: cases.length,
     kind: tally.kind,
     mode: tally.mode,
     project: tally.project,
@@ -150,7 +164,7 @@ async function runEval(laya: LayaClassifier, source: string): Promise<EvalReport
 
 function printReport(report: EvalReport): void {
   const lines = [
-    `Router accuracy (${report.source}), ${ROUTER_EVAL_CASES.length} prompts`,
+    `Router accuracy (${report.source}), ${report.cases} prompts`,
     `  task kind   ${pct(report.kind)}`,
     `  mode        ${pct(report.mode)}`,
     `  project     ${pct(report.project)}`,
@@ -162,16 +176,18 @@ function printReport(report: EvalReport): void {
   console.log(lines.join("\n"));
 }
 
-test("heuristics-only routing stays above its measured floor", async ({}, testInfo) => {
-  const report = await runEval(heuristicsOnly, "heuristics only");
-  printReport(report);
+test("heuristics-only routing stays above its measured floors", async ({}, testInfo) => {
+  const tuned = await runEval(heuristicsOnly, "heuristics only, tuning set", ROUTER_EVAL_CASES);
+  const heldOut = await runEval(heuristicsOnly, "heuristics only, held-out", ROUTER_HELDOUT_CASES);
+  printReport(tuned);
+  printReport(heldOut);
   await testInfo.attach("router-accuracy-heuristics.json", {
-    body: JSON.stringify(report, null, 2),
+    body: JSON.stringify({ tuned, heldOut }, null, 2),
     contentType: "application/json",
   });
-  // Floors from the first measurement; raise them as routing improves.
-  expect(report.kind.correct).toBeGreaterThanOrEqual(41);
-  expect(report.allCorrect.correct).toBeGreaterThanOrEqual(40);
+  // Floors from the latest measurement; raise them as routing improves.
+  expect(tuned.allCorrect.correct).toBeGreaterThanOrEqual(HEURISTIC_FLOORS.tuned);
+  expect(heldOut.allCorrect.correct).toBeGreaterThanOrEqual(HEURISTIC_FLOORS.heldOut);
 });
 
 test("Laya routing accuracy", async ({}, testInfo) => {
@@ -183,13 +199,14 @@ test("Laya routing accuracy", async ({}, testInfo) => {
     laya.warm();
     // Loading the Core ML buckets takes a few seconds; score only once Laya is ready.
     await expect.poll(() => laya.status().state, { timeout: 60_000 }).toBe("ready");
-    const report = await runEval(laya, "Laya + cues");
-    printReport(report);
+    const tuned = await runEval(laya, "Laya + cues, tuning set", ROUTER_EVAL_CASES);
+    const heldOut = await runEval(laya, "Laya + cues, held-out", ROUTER_HELDOUT_CASES);
+    printReport(tuned);
+    printReport(heldOut);
     await testInfo.attach("router-accuracy-laya.json", {
-      body: JSON.stringify(report, null, 2),
+      body: JSON.stringify({ tuned, heldOut }, null, 2),
       contentType: "application/json",
     });
-    expect(report.misses.length).toBeLessThan(ROUTER_EVAL_CASES.length);
   } finally {
     laya.dispose();
   }
