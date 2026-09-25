@@ -5,6 +5,7 @@ import {
   KeyboardIcon,
   ModelIcon,
   PlugIcon,
+  ReasoningIcon,
   SettingsIcon,
   SkillIcon,
   SunIcon,
@@ -58,6 +59,15 @@ export const SETTINGS_SECTIONS = [
     icon: <KeyboardIcon />,
     keywords: ["keys", "hotkeys", "keybindings"],
     description: () => "Shortcuts available across the app.",
+    needsWorkspace: false,
+  },
+  {
+    id: "router",
+    title: "Router",
+    group: "Agent",
+    icon: <ReasoningIcon />,
+    keywords: ["laya", "routing", "tiers", "local", "frontier", "projects", "roster"],
+    description: () => "Which models the router may pick, and the projects it may work in.",
     needsWorkspace: false,
   },
   {
