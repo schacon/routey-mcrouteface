@@ -467,3 +467,98 @@ export const ROUTER_HELDOUT_CASES: readonly RouterEvalCase[] = [
     project: "scratch",
   },
 ];
+
+/** A follow-up in an existing session, with the turn before it. */
+export interface RouterFollowUpCase extends RouterEvalCase {
+  readonly previousPrompt: string;
+  readonly previousKind: TaskKind;
+  readonly previousMode: RouteMode;
+}
+
+/**
+ * Follow-ups are classified with the previous request as context, and bare
+ * continuations ("do it", "try again") keep the previous turn's routing. The
+ * first case is the conversation that routed a coding follow-up to a local
+ * model without tools.
+ */
+export const ROUTER_FOLLOWUP_CASES: readonly RouterFollowUpCase[] = [
+  {
+    previousPrompt: "look at my nvim setup and tell me what to do exactly",
+    previousKind: "coding",
+    previousMode: "execute",
+    prompt: "do it for me - fully disabled",
+    kind: "coding",
+    mode: "execute",
+  },
+  {
+    previousPrompt: "look at my nvim setup and tell me what to do exactly",
+    previousKind: "coding",
+    previousMode: "execute",
+    prompt: "try again",
+    kind: "coding",
+    mode: "execute",
+  },
+  {
+    previousPrompt: "how do I turn off autocomplete in neovim",
+    previousKind: "coding",
+    previousMode: "plan",
+    prompt: "make it disabled only for markdown files instead",
+    kind: "coding",
+  },
+  {
+    previousPrompt: "write a python script that renames my photos by date",
+    previousKind: "coding",
+    previousMode: "execute",
+    prompt: "also handle heic files",
+    kind: "coding",
+    mode: "execute",
+  },
+  {
+    previousPrompt: "draft a friendly email declining the meeting on friday",
+    previousKind: "writing",
+    previousMode: "answer",
+    prompt: "make it shorter and less formal",
+    kind: "writing",
+    mode: "answer",
+  },
+  {
+    previousPrompt: "draft a friendly email declining the meeting on friday",
+    previousKind: "writing",
+    previousMode: "answer",
+    prompt: "now what's the capital of Peru?",
+    kind: "general",
+    mode: "answer",
+  },
+  {
+    previousPrompt: "what's the latest news on the EU AI act?",
+    previousKind: "research",
+    previousMode: "plan",
+    prompt: "what about the UK?",
+    kind: "research",
+    mode: "plan",
+  },
+  {
+    previousPrompt: "in pi-gui, explain how sessions are persisted",
+    previousKind: "coding",
+    previousMode: "plan",
+    prompt: "ok now refactor it to use sqlite",
+    kind: "coding",
+    mode: "execute",
+  },
+  {
+    previousPrompt: "which models do you have configured?",
+    previousKind: "app",
+    previousMode: "answer",
+    prompt: "use the local one for everything simple",
+    kind: "app",
+    mode: "answer",
+  },
+  {
+    previousPrompt: "explain how vaccines train the immune system",
+    previousKind: "general",
+    previousMode: "answer",
+    prompt: "turn that into a short poem",
+    kind: "writing",
+    mode: "answer",
+  },
+];

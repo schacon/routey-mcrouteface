@@ -32,6 +32,10 @@ export interface ClassifyOptions {
   readonly projects: readonly string[];
   /** Only a new session picks a directory. */
   readonly firstTurn: boolean;
+  /** The session's previous request, so a follow-up is read in context. */
+  readonly previousPrompt?: string;
+  /** The previous turn's task kind; a follow-up no cue explains keeps it. */
+  readonly previousKind?: TaskKind;
 }
 
 const PROJECT_CANDIDATE_LIMIT = 8;
@@ -44,17 +48,18 @@ const PROJECT_CANDIDATE_LIMIT = 8;
 export async function classifyPrompt(
   laya: LayaClassifier,
   prompt: string,
-  { projects, firstTurn }: ClassifyOptions,
+  options: ClassifyOptions,
 ): Promise<Classification> {
   let answers: readonly LayaWireAnswer[] = [];
   let source: RouterSource;
   try {
-    const result = await laya.answer(layaState(prompt), ROUTER_QUESTIONS);
+    const result = await laya.answer(layaState(prompt, options.previousPrompt), ROUTER_QUESTIONS);
     answers = result.answers;
     source = { kind: "laya", latencyMs: result.latencyMs };
   } catch (error) {
     source = { kind: "heuristic", reason: error instanceof Error ? error.message : String(error) };
   }
+  const { projects, firstTurn } = options;
   const { signals, cues } = combineSignals({ prompt, answers, knownProjects: projects });
   const questionAnswers = [...toQuestionAnswers(ROUTER_QUESTIONS, answers)];
 
@@ -84,8 +89,14 @@ export async function classifyPrompt(
       }
     }
   }
+  // Laya and the cues read one message; a follow-up like "also handle heic
+  // files" that names no kind continues whatever the session was doing.
+  const picked = pickTaskKind(signals, cues);
+  const kindCued = cues.some((cue) => cue.signal.startsWith("kind."));
+  const taskKind =
+    picked === "general" && !kindCued && options.previousKind ? options.previousKind : picked;
   return {
-    taskKind: pickTaskKind(signals, cues),
+    taskKind,
     source,
     signals,
     cues,

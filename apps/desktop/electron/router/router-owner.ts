@@ -18,6 +18,7 @@ import type { LayaClassifier } from "./laya-client";
 import { resolveRouteDecision, rosterModelUses, type AvailableModel } from "./route-policy";
 import { DEFAULT_SCRATCH_DIRECTORY, RouterConfigStore } from "./router-config-store";
 import type { Classification } from "./router-classifier";
+import { CONTINUATION_CUE } from "./router-signals";
 import { listOllamaModels, ollamaBaseUrl, warmOllamaModel } from "./ollama-client";
 import {
   OLLAMA_CLASSIFIER_RANKING,
@@ -267,21 +268,50 @@ export class RouterOwner {
     if (pending) {
       record = pending.record;
     } else {
-      const config = await this.config();
-      const classification = await this.classify(prompt, false);
-      const decision = await this.resolve(prompt, classification, config, hasImages, sessionCwd);
-      const mentioned = classification.signals.mentionedProject;
-      record = {
-        promptExcerpt: prompt.slice(0, 200),
-        firstTurn: false,
-        source: classification.source,
-        signals: classification.signals,
-        answers: classification.answers,
-        cues: classification.cues,
-        decision,
-        ...(classification.note ? { classifierNote: classification.note } : {}),
-        ...(mentioned && mentioned !== sessionCwd ? { suggestedProject: mentioned } : {}),
-      };
+      const previous = (await this.log.read(sessionRef)).decisions.at(-1);
+      const continuation = previous && CONTINUATION_CUE.exec(prompt);
+      if (previous && continuation) {
+        record = {
+          promptExcerpt: prompt.slice(0, 200),
+          firstTurn: false,
+          source: {
+            kind: "heuristic",
+            reason: `"${continuation[0].trim()}" continues the previous request`,
+          },
+          signals: previous.signals,
+          answers: [],
+          cues: [
+            {
+              signal: "continuation",
+              reason: `"${continuation[0].trim()}" keeps the previous routing`,
+            },
+          ],
+          decision: {
+            ...previous.decision,
+            cwd: sessionCwd,
+            reasons: [
+              "continues the previous request, so it keeps that turn's routing",
+              ...previous.decision.reasons,
+            ],
+          },
+        };
+      } else {
+        const config = await this.config();
+        const classification = await this.classify(prompt, false, previous);
+        const decision = await this.resolve(prompt, classification, config, hasImages, sessionCwd);
+        const mentioned = classification.signals.mentionedProject;
+        record = {
+          promptExcerpt: prompt.slice(0, 200),
+          firstTurn: false,
+          source: classification.source,
+          signals: classification.signals,
+          answers: classification.answers,
+          cues: classification.cues,
+          decision,
+          ...(classification.note ? { classifierNote: classification.note } : {}),
+          ...(mentioned && mentioned !== sessionCwd ? { suggestedProject: mentioned } : {}),
+        };
+      }
     }
     this.modesBySessionId.set(sessionRef.sessionId, record.decision.mode);
     await this.log.append(sessionRef, {
@@ -298,7 +328,11 @@ export class RouterOwner {
     this.laya.dispose();
   }
 
-  private async classify(prompt: string, firstTurn: boolean): Promise<Classification> {
+  private async classify(
+    prompt: string,
+    firstTurn: boolean,
+    previous?: RouterDecisionRecord,
+  ): Promise<Classification> {
     const [projects, classifier] = await Promise.all([
       this.projects(),
       this.config().then((config) => this.activeClassifier(config)),
@@ -306,6 +340,9 @@ export class RouterOwner {
     return classifier.classify(prompt, {
       projects: projects.map((project) => project.path),
       firstTurn,
+      ...(previous
+        ? { previousPrompt: previous.promptExcerpt, previousKind: previous.decision.taskKind }
+        : {}),
     });
   }
 

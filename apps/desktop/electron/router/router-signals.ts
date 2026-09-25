@@ -83,9 +83,20 @@ export function projectQuestion(candidates: readonly string[]): LayaWireQuestion
   };
 }
 
-export function layaState(prompt: string): string {
-  return `User request: ${prompt.trim()}`;
+export function layaState(prompt: string, previousPrompt?: string): string {
+  return previousPrompt
+    ? `Previous request: ${previousPrompt.trim()}\nUser request: ${prompt.trim()}`
+    : `User request: ${prompt.trim()}`;
 }
+
+/**
+ * Replies that only continue the previous request ("do it", "yes", "try
+ * again"). They keep the previous turn's routing instead of being classified
+ * on their own, where "do it for me - fully disabled" reads like a settings
+ * change. "ok" is left out: "ok now refactor it" starts a new instruction.
+ */
+export const CONTINUATION_CUE =
+  /^\s*(yes|yep|yeah|sure|please do|go ahead|do it|do that|try again|again|retry|continue|keep going|proceed|let'?s do it|make it so)\b/i;
 
 const CODING_CUE =
   /\b(refactor|debug|bug|stack ?trace|compile|build|lint|unit tests?|tests?|function|method|class|variable|repo(sitory)?|commit|branch|merge|pull request|script|code|api|endpoint|component|css|html|typescript|javascript|python|rust|swift|golang|java|sql|regex|toggle|deploy|bash|shell|one-liner|command line|terminal command|git)\b/i;

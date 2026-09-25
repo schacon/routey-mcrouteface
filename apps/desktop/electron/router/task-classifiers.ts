@@ -79,7 +79,8 @@ kind:
 - "research": needs current or external information from the web: news, latest releases, prices, recent papers, reviews.
 difficulty: how hard the request is for a capable expert.
 read_only: true if the user only wants an explanation, review, answer or plan and no files should be changed.
-project: one of ${JSON.stringify(projectNames)} if the request is about that project, otherwise null.`;
+project: one of ${JSON.stringify(projectNames)} if the request is about that project, otherwise null.
+When a previous request is given, classify the new request in that context: a short reply that continues or refines the previous request keeps its kind.`;
 }
 
 const CLASSIFIER_SCHEMA = {
@@ -145,7 +146,9 @@ export function ollamaTaskClassifier(
             baseUrl,
             model,
             classifierSystemPrompt(projectNames),
-            prompt,
+            options.previousPrompt
+              ? `Previous request: ${options.previousPrompt}\nNew request: ${prompt}`
+              : prompt,
             CLASSIFIER_SCHEMA,
             CLASSIFIER_TIMEOUT_MS,
           ),

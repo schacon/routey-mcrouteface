@@ -4,6 +4,7 @@ import type { RosterModel, RouterConfig, TaskKind } from "../../contracts/router
 import { LayaProcessClient } from "../../electron/router/laya-client";
 import { ollamaBaseUrl } from "../../electron/router/ollama-client";
 import { resolveRouteDecision } from "../../electron/router/route-policy";
+import { CONTINUATION_CUE } from "../../electron/router/router-signals";
 import {
   keywordClassifier,
   layaTaskClassifier,
@@ -13,6 +14,7 @@ import {
 import {
   EVAL_PROJECTS,
   ROUTER_EVAL_CASES,
+  ROUTER_FOLLOWUP_CASES,
   ROUTER_HELDOUT_CASES,
   type RouterEvalCase,
 } from "../fixtures/router-eval-prompts";
@@ -64,7 +66,7 @@ const config: RouterConfig = {
 };
 
 /** "All correct" counts from the latest run of each set, heuristics only. */
-const HEURISTIC_FLOORS = { tuned: 50, heldOut: 17 } as const;
+const HEURISTIC_FLOORS = { tuned: 50, heldOut: 17, followUps: 9 } as const;
 
 const heuristicsOnly = keywordClassifier();
 
@@ -162,6 +164,62 @@ async function runEval(
   };
 }
 
+/** Follow-ups the way the router handles them: continuations inherit, the rest get context. */
+async function runFollowUps(classifier: TaskClassifier, source: string): Promise<EvalReport> {
+  const all = { scored: 0, correct: 0 };
+  const kind = { scored: 0, correct: 0 };
+  const mode = { scored: 0, correct: 0 };
+  const misses: { prompt: string; expected: string; got: string }[] = [];
+  for (const testCase of ROUTER_FOLLOWUP_CASES) {
+    let gotKind: TaskKind = testCase.previousKind;
+    let gotMode = testCase.previousMode;
+    if (!CONTINUATION_CUE.test(testCase.prompt)) {
+      const classification = await classifier.classify(testCase.prompt, {
+        projects: EVAL_PROJECTS,
+        firstTurn: false,
+        previousPrompt: testCase.previousPrompt,
+        previousKind: testCase.previousKind,
+      });
+      gotKind = classification.taskKind;
+      gotMode = resolveRouteDecision({
+        taskKind: gotKind,
+        signals: classification.signals,
+        config,
+        availableModels: roster.map((model) => ({ ...model, supportsImages: false })),
+        hasImages: false,
+        sessionCwd: SCRATCH,
+      }).mode;
+    }
+    const kindOk = gotKind === testCase.kind;
+    const modeOk = testCase.mode === undefined || gotMode === testCase.mode;
+    kind.scored += 1;
+    if (kindOk) kind.correct += 1;
+    if (testCase.mode !== undefined) {
+      mode.scored += 1;
+      if (modeOk) mode.correct += 1;
+    }
+    all.scored += 1;
+    if (kindOk && modeOk) all.correct += 1;
+    else {
+      misses.push({
+        prompt: `${testCase.previousPrompt} → ${testCase.prompt}`,
+        expected: `${testCase.kind}/${testCase.mode ?? "*"}`,
+        got: `${gotKind}/${gotMode}`,
+      });
+    }
+  }
+  return {
+    source,
+    cases: ROUTER_FOLLOWUP_CASES.length,
+    kind,
+    mode,
+    project: { scored: 0, correct: 0 },
+    allCorrect: all,
+    byKind: {},
+    misses,
+  };
+}
+
 function printReport(report: EvalReport): void {
   const lines = [
     `Router accuracy (${report.source}), ${report.cases} prompts`,
@@ -179,8 +237,10 @@ function printReport(report: EvalReport): void {
 test("heuristics-only routing stays above its measured floors", async ({}, testInfo) => {
   const tuned = await runEval(heuristicsOnly, "heuristics only, tuning set", ROUTER_EVAL_CASES);
   const heldOut = await runEval(heuristicsOnly, "heuristics only, held-out", ROUTER_HELDOUT_CASES);
+  const followUps = await runFollowUps(heuristicsOnly, "heuristics only, follow-ups");
   printReport(tuned);
   printReport(heldOut);
+  printReport(followUps);
   await testInfo.attach("router-accuracy-heuristics.json", {
     body: JSON.stringify({ tuned, heldOut }, null, 2),
     contentType: "application/json",
@@ -188,6 +248,7 @@ test("heuristics-only routing stays above its measured floors", async ({}, testI
   // Floors from the latest measurement; raise them as routing improves.
   expect(tuned.allCorrect.correct).toBeGreaterThanOrEqual(HEURISTIC_FLOORS.tuned);
   expect(heldOut.allCorrect.correct).toBeGreaterThanOrEqual(HEURISTIC_FLOORS.heldOut);
+  expect(followUps.allCorrect.correct).toBeGreaterThanOrEqual(HEURISTIC_FLOORS.followUps);
 });
 
 test("Laya routing accuracy", async ({}, testInfo) => {
@@ -225,8 +286,10 @@ test("local model classifier accuracy", async ({}, testInfo) => {
   await classifier.classify("warm up", { projects: [], firstTurn: false });
   const tuned = await runEval(classifier, `${model}, tuning set`, ROUTER_EVAL_CASES);
   const heldOut = await runEval(classifier, `${model}, held-out`, ROUTER_HELDOUT_CASES);
+  const followUps = await runFollowUps(classifier, `${model}, follow-ups`);
   printReport(tuned);
   printReport(heldOut);
+  printReport(followUps);
   await testInfo.attach("router-accuracy-model.json", {
     body: JSON.stringify({ model, tuned, heldOut }, null, 2),
     contentType: "application/json",
