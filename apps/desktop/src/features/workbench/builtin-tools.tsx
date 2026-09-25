@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import { BUILTIN_TOOL_KINDS, type BuiltinToolKind } from "../../../contracts/workbench";
-import { DiffIcon, FileIcon, TerminalIcon } from "../../ui/icons";
+import { FileIcon, ReasoningIcon, StatusIcon, TerminalIcon, WorktreeIcon } from "../../ui/icons";
 
 interface BuiltinToolDefinition {
   readonly label: string;
@@ -13,13 +13,23 @@ interface BuiltinToolDefinition {
 
 /** Presentation for every built-in tool; a missing kind fails the build. */
 export const BUILTIN_TOOLS = {
-  files: { label: "Files", description: "Browse files in this checkout", Icon: FileIcon },
-  changes: {
-    label: "Review",
-    description: "Review uncommitted, branch or turn changes",
-    Icon: DiffIcon,
+  info: {
+    label: "Info",
+    description: "Where this session works, its models and its purpose",
+    Icon: StatusIcon,
+  },
+  inspector: {
+    label: "Inspector",
+    description: "Why the router picked each turn's model, mode and effort",
+    Icon: ReasoningIcon,
+  },
+  gitbutler: {
+    label: "GitButler",
+    description: "Branches, commits and uncommitted changes from but status",
+    Icon: WorktreeIcon,
     shortcutKey: "R",
   },
+  files: { label: "Files", description: "Browse files in this checkout", Icon: FileIcon },
   terminal: {
     label: "Terminal",
     description: "Run commands in this task's checkout",

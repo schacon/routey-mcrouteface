@@ -28,6 +28,7 @@ import {
 import type { ClipboardImageRead } from "../contracts/composer-attachments";
 import type { SaveTaskWorkbenchTemplateInput, TaskWorkbenchTemplate } from "../contracts/workbench";
 import type { RouterConfig, RouterOverview, RouterSessionInfo } from "../contracts/router";
+import type { GitButlerStatusResult } from "../contracts/gitbutler";
 import type {
   TurnChangesInput,
   TurnChangesResult,
@@ -561,6 +562,8 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.getRouterOverview) as Promise<RouterOverview>,
   setRouterConfig: (config: RouterConfig) =>
     ipcRenderer.invoke(desktopIpc.setRouterConfig, config) as Promise<RouterOverview>,
+  getButStatus: (workspaceId: string) =>
+    ipcRenderer.invoke(desktopIpc.getButStatus, workspaceId) as Promise<GitButlerStatusResult>,
   onRouterChanged: (listener: (target: SessionRef | null) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, target: SessionRef | null) =>
       listener(target);

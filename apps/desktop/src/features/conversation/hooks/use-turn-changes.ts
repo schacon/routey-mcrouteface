@@ -20,7 +20,7 @@ export function useTurnChanges({
   readonly api: PiDesktopApi | undefined;
   readonly target: SessionRef | null;
   readonly running: boolean;
-  readonly workbench: Pick<ReturnType<typeof useWorkbench>, "setChanges" | "openTool">;
+  readonly workbench: Pick<ReturnType<typeof useWorkbench>, "openFile">;
 }) {
   const [loaded, setLoaded] = useState<{
     readonly target: SessionRef;
@@ -43,13 +43,11 @@ export function useTurnChanges({
     };
   }, [api, target, running]);
 
+  // The git Review panel is retired; a changed file opens in the Files tool.
   const openTurnChange = useCallback((turn: TurnChangeSummary, path: string) => {
-    workbenchRef.current.setChanges({
-      workspaceId: turn.checkoutId,
-      selectedPath: path,
-      scope: { kind: "turn", checkpointId: turn.checkpointId },
-    });
-    workbenchRef.current.openTool({ kind: "changes" });
+    void workbenchRef.current
+      .openFile({ workspaceId: turn.checkoutId, path })
+      .catch(() => undefined); // A deleted or unreadable file leaves the panel unchanged.
   }, []);
 
   return {

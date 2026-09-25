@@ -26,6 +26,8 @@ import type { DesktopExtensionViewOwner } from "../extensions/extension-view-own
 import { registerExtensionViewRequests } from "./extension-view-requests";
 import { registerReviewRequests, type ReviewRequestsOwner } from "./review-requests";
 import { registerRouterRequests, type RouterRequestsOwner } from "./router-requests";
+import type { GitButlerStatusResult } from "../../contracts/gitbutler";
+import { readButStatus } from "../platform/gitbutler/but-status";
 import { mainFrameHandler } from "./main-frame-ipc";
 import { assertComposerAttachmentPixels } from "./composer-attachment-pixels";
 import {
@@ -990,6 +992,20 @@ function registerWorkspaceFileIpc(
       await capabilities.revealWorkspaceFile(workspacePath, expectString(rawFilePath, "filePath"));
     },
   );
+  ipcMain.handle(desktopIpc.getButStatus, async (event, rawWorkspaceId: unknown) => {
+    windows.windowForSender(event.sender);
+    const workspacePath = workspace.getWorkspacePath(
+      expectNonEmptyString(rawWorkspaceId, "workspaceId"),
+    );
+    if (!workspacePath) {
+      return {
+        state: "unavailable",
+        reason: "error",
+        message: "This session's workspace could not be found.",
+      } satisfies GitButlerStatusResult;
+    }
+    return readButStatus(workspacePath);
+  });
   ipcMain.handle(desktopIpc.getChangedFiles, async (event, rawWorkspaceId: unknown) => {
     windows.windowForSender(event.sender);
     const workspacePath = workspace.getWorkspacePath(

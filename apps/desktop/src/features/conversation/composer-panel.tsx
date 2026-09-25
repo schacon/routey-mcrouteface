@@ -28,7 +28,6 @@ import type {
   ModelOnboardingSettingsSection,
 } from "../settings/model-onboarding";
 import { ContextMeter } from "./context-meter";
-import { ModelSelector } from "./model-selector";
 import type { ExtensionDockModel } from "../extensions/extension-session-ui";
 
 interface ComposerPanelProps {
@@ -69,8 +68,8 @@ interface ComposerPanelProps {
   readonly onSteerQueuedMessage: (messageId: string) => void;
   readonly onSelectSlashCommand: (command: ComposerSlashCommand) => void;
   readonly onSelectSlashOption: (option: ComposerSlashOption) => void;
-  readonly onSetModel: (provider: string, modelId: string) => void;
-  readonly onSetThinking: (level: string) => void;
+  /** Opens the Inspector, which explains why the router chose this model. */
+  readonly onOpenInspector: () => void;
   readonly modelOnboarding: ModelOnboardingState;
   readonly onOpenModelSettings: (section: ModelOnboardingSettingsSection) => void;
   readonly onSubmit: () => void;
@@ -125,8 +124,7 @@ export function ComposerPanel({
   onSteerQueuedMessage,
   onSelectSlashCommand,
   onSelectSlashOption,
-  onSetModel,
-  onSetThinking,
+  onOpenInspector,
   modelOnboarding,
   onOpenModelSettings,
   onSubmit,
@@ -195,17 +193,20 @@ export function ComposerPanel({
             <div className="composer__footer">
               <div className="composer__footer-row">
                 <div className="composer__config">
-                  <ModelSelector
-                    runtime={runtime}
-                    provider={provider}
-                    modelId={modelId}
-                    thinkingLevel={thinkingLevel}
-                    disabled={selectedSession.status === "running"}
-                    unselectedModelLabel={modelOnboarding.unselectedModelLabel}
-                    emptyModelTitle={modelOnboarding.emptyModelTitle}
-                    onSetModel={onSetModel}
-                    onSetThinking={onSetThinking}
-                  />
+                  <button
+                    className="composer__route"
+                    data-testid="composer-route"
+                    title="Chosen by the router for the last turn. Open the Inspector to see why."
+                    type="button"
+                    onClick={onOpenInspector}
+                  >
+                    {modelId
+                      ? (runtime?.models.find(
+                          (model) => model.providerId === provider && model.modelId === modelId,
+                        )?.label ?? modelId)
+                      : "Routed per turn"}
+                    {thinkingLevel ? ` · ${thinkingLevel}` : ""}
+                  </button>
                   <ContextMeter usage={usage} />
                 </div>
                 <div className="composer__actions">

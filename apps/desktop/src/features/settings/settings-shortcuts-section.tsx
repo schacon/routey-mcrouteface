@@ -25,7 +25,7 @@ const SHORTCUT_GROUPS: readonly {
       { title: "Command palette", modifiers: ["Mod"], key: "K" },
       { title: "Go to file", modifiers: ["Mod"], key: "P" },
       { title: "Open settings", modifiers: ["Mod"], key: "," },
-      { title: "Toggle sidebar", modifiers: ["Mod"], key: "B" },
+      { title: "Sessions", modifiers: ["Mod"], key: "B" },
       { title: "Toggle side panel", modifiers: ["Mod", "Alt"], key: "B" },
       { title: "New window", modifiers: ["Mod", "Shift"], key: "N" },
     ],
@@ -33,10 +33,10 @@ const SHORTCUT_GROUPS: readonly {
   {
     title: "Threads",
     shortcuts: [
-      { title: "New thread", modifiers: ["Mod"], key: "N" },
+      { title: "New session", modifiers: ["Mod"], key: "N" },
       { title: "Switch to recent thread", modifiers: ["Mod"], key: "1–9" },
       { title: "Cycle through threads", modifiers: ["Ctrl"], key: "Tab" },
-      { title: "Find in thread", modifiers: ["Mod"], key: "F" },
+      { title: "Find in session", modifiers: ["Mod"], key: "F" },
     ],
   },
   {

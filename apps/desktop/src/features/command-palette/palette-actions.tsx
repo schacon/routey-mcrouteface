@@ -75,7 +75,7 @@ export function buildPaletteActions(context: PaletteActionContext): readonly Pal
   if (context.hasWorkspace) {
     actions.push({
       id: "new-thread",
-      title: "New thread",
+      title: "New session",
       icon: <PlusIcon />,
       hint: formatShortcut(platform, "N"),
       run: context.newThread,
@@ -99,7 +99,7 @@ export function buildPaletteActions(context: PaletteActionContext): readonly Pal
       },
       {
         id: "find-in-thread",
-        title: "Find in thread",
+        title: "Find in session",
         icon: <SearchIcon />,
         hint: formatShortcut(platform, "F"),
         run: context.findInThread,
