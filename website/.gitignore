@@ -1,0 +1,6 @@
+.vercel/
+
+# These are source files, not the Vite output ignored by the repository root.
+!public/index.html
+!public/styles.css
+!public/demo.js
