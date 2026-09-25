@@ -1,4 +1,11 @@
 import { basename } from "node:path";
+import {
+  DIFFICULTY_BANDS,
+  TASK_KINDS,
+  type DifficultyBand,
+  type RosterModelUse,
+  type RouteUse,
+} from "../../contracts/router";
 import type {
   ModelCapability,
   ModelTier,
@@ -32,7 +39,7 @@ export interface RouteContext {
 }
 
 /** Difficulty bands on Laya's compressed 0-4 scale; observed answers sit near 1.3-2.0. */
-function difficultyBand(difficulty: number): "easy" | "moderate" | "hard" {
+function difficultyBand(difficulty: number): DifficultyBand {
   if (difficulty < 1.5) return "easy";
   if (difficulty < 1.8) return "moderate";
   return "hard";
@@ -44,14 +51,14 @@ const TIER_FALLBACKS: Record<ModelTier, readonly ModelTier[]> = {
   frontier: ["frontier", "hosted", "local"],
 };
 
-function preferredTier(kind: TaskKind, band: ReturnType<typeof difficultyBand>): ModelTier {
+function preferredTier(kind: TaskKind, band: DifficultyBand): ModelTier {
   if (band === "hard") return "frontier";
   if (kind === "coding" || kind === "research") return band === "moderate" ? "frontier" : "hosted";
   // Settings questions, chat and writing stay local unless they look hard.
   return band === "moderate" ? "hosted" : "local";
 }
 
-function thinkingFor(kind: TaskKind, band: ReturnType<typeof difficultyBand>): RouteThinkingLevel {
+function thinkingFor(kind: TaskKind, band: DifficultyBand): RouteThinkingLevel {
   if (band === "hard") return "high";
   if (band === "moderate") return "medium";
   return kind === "general" || kind === "app" ? "off" : "low";
@@ -86,6 +93,57 @@ function supportsImages(model: RosterModel, available: readonly AvailableModel[]
   );
 }
 
+/**
+ * The roster model for a task kind: the first model tagged for it in the
+ * preferred tier, else that tier's first model, falling back across tiers.
+ */
+function pickRosterModel(
+  kind: TaskKind,
+  wantedTier: ModelTier,
+  usable: readonly RosterModel[],
+): { readonly model: RosterModel; readonly tier: ModelTier; readonly tagged: boolean } | undefined {
+  for (const tier of TIER_FALLBACKS[wantedTier]) {
+    const inTier = usable.filter((model) => model.tier === tier);
+    const tagged = inTier.find((model) => model.capabilities.includes(capabilityFor(kind)));
+    const model = tagged ?? inTier[0];
+    if (model) return { model, tier, tagged: Boolean(tagged) };
+  }
+  return undefined;
+}
+
+/**
+ * Which task kinds and difficulties would route to each usable roster model,
+ * by running the same selection as resolveRouteDecision over every
+ * combination. Powers the Info panel's "what Routey uses it for" text.
+ */
+export function rosterModelUses(
+  config: RouterConfig,
+  availableModels: readonly AvailableModel[],
+): RosterModelUse[] {
+  const usable = config.roster.filter((model) => isAvailable(model, availableModels));
+  const uses = new Map(
+    usable.map((model) => [
+      `${model.provider}/${model.modelId}`,
+      {
+        provider: model.provider,
+        modelId: model.modelId,
+        tier: model.tier,
+        uses: [] as RouteUse[],
+      },
+    ]),
+  );
+  for (const taskKind of TASK_KINDS) {
+    for (const difficulty of DIFFICULTY_BANDS) {
+      const pick = pickRosterModel(taskKind, preferredTier(taskKind, difficulty), usable);
+      if (pick)
+        uses
+          .get(`${pick.model.provider}/${pick.model.modelId}`)
+          ?.uses.push({ taskKind, difficulty });
+    }
+  }
+  return [...uses.values()];
+}
+
 export function resolveRouteDecision(context: RouteContext): RouteDecision {
   const { taskKind, signals, config, availableModels } = context;
   const reasons: string[] = [];
@@ -100,18 +158,14 @@ export function resolveRouteDecision(context: RouteContext): RouteDecision {
   );
   if (context.hasImages) reasons.push("images attached: only vision-capable models");
 
-  let chosen: RosterModel | undefined;
-  let chosenTier: ModelTier = wantedTier;
-  for (const tier of TIER_FALLBACKS[wantedTier]) {
-    const inTier = usable.filter((model) => model.tier === tier);
-    const capable = inTier.find((model) => model.capabilities.includes(capabilityFor(taskKind)));
-    chosen = capable ?? inTier[0];
-    if (chosen) {
-      chosenTier = tier;
-      if (tier !== wantedTier) reasons.push(`no usable ${wantedTier} model; fell back to ${tier}`);
-      if (!capable) reasons.push(`no ${tier} model is tagged for ${taskKind}; using the first one`);
-      break;
-    }
+  const pick = pickRosterModel(taskKind, wantedTier, usable);
+  const chosen = pick?.model;
+  const chosenTier = pick?.tier ?? wantedTier;
+  if (pick && pick.tier !== wantedTier) {
+    reasons.push(`no usable ${wantedTier} model; fell back to ${pick.tier}`);
+  }
+  if (pick && !pick.tagged) {
+    reasons.push(`no ${pick.tier} model is tagged for ${taskKind}; using the first one`);
   }
 
   let provider: string;

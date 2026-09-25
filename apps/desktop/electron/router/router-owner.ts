@@ -13,7 +13,7 @@ import type {
 } from "../../contracts/router";
 import { DecisionLogStore } from "./decision-log-store";
 import type { LayaClassifier } from "./laya-client";
-import { resolveRouteDecision, type AvailableModel } from "./route-policy";
+import { resolveRouteDecision, rosterModelUses, type AvailableModel } from "./route-policy";
 import { DEFAULT_SCRATCH_DIRECTORY, RouterConfigStore } from "./router-config-store";
 import { pickTaskKind } from "./router-signals";
 import { classifyPrompt, type Classification } from "./router-classifier";
@@ -37,8 +37,8 @@ export interface RouterHost {
     userMessages: readonly string[],
     model: { readonly provider: string; readonly modelId: string } | undefined,
   ): Promise<string | null>;
-  /** The session's routing info changed; renderers refresh their panels. */
-  publish(sessionRef: SessionRef): void;
+  /** A session's routing info changed, or (null) the router's own config or status did. */
+  publish(sessionRef: SessionRef | null): void;
 }
 
 /** A first-turn decision made before its session exists. */
@@ -92,6 +92,7 @@ export class RouterOwner {
   async setConfig(config: RouterConfig): Promise<RouterOverview> {
     await this.configStore.write(config);
     this.projectsCache = undefined;
+    this.host.publish(null);
     return this.overview();
   }
 
@@ -104,6 +105,7 @@ export class RouterOwner {
     return {
       laya: this.laya.status(),
       config,
+      modelUses: rosterModelUses(config, routable.models),
       projects,
       availableModels: routable.models.map((model) => ({
         provider: model.provider,

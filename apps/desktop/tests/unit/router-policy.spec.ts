@@ -1,7 +1,12 @@
 import { expect, test } from "@playwright/test";
 import type { RosterModel, RouterConfig } from "../../contracts/router";
 import { decodeRouterConfig } from "../../contracts/router";
-import { resolveRouteDecision, type AvailableModel } from "../../electron/router/route-policy";
+import {
+  resolveRouteDecision,
+  rosterModelUses,
+  type AvailableModel,
+} from "../../electron/router/route-policy";
+import { describeModelUses } from "../../src/features/workbench/info-available-models";
 import { seedRoster } from "../../electron/router/router-config-store";
 import {
   combineSignals,
@@ -187,4 +192,24 @@ test("router config decoding rejects unknown fields and versions", () => {
   expect(() => decodeRouterConfig({ ...config, roster: [{ ...frontier, tier: "cloud" }] })).toThrow(
     /tier/,
   );
+});
+
+test("describes what the router sends to each usable roster model", () => {
+  const uses = rosterModelUses(config, available);
+  const byModel = new Map(uses.map((use) => [use.modelId, describeModelUses(use.uses)]));
+  // Local general takes easy chat, settings and writing; the local coder is never
+  // preferred because easy coding goes to hosted, which falls back to frontier here.
+  expect(byModel.get("qwen3.5:9b")).toBe("Easy general questions, Routey settings and writing.");
+  expect(byModel.get("qwen3-coder:30b")).toBe(
+    "Not picked right now: another model comes first in its tier.",
+  );
+  expect(byModel.get("gpt-frontier")).toBe(
+    "Easy coding and research; every moderate prompt; every hard prompt.",
+  );
+
+  const withoutFrontier = rosterModelUses(
+    config,
+    available.filter((m) => m.provider === "ollama"),
+  );
+  expect(withoutFrontier.map((use) => use.modelId)).toEqual(["qwen3.5:9b", "qwen3-coder:30b"]);
 });

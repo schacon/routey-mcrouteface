@@ -1,6 +1,7 @@
 import type { PiDesktopApi } from "../../../contracts/ipc";
 import type { RouterDecisionRecord } from "../../../contracts/router";
 import { formatRelativeTime } from "../../lib/string-utils";
+import { InfoAvailableModels } from "./info-available-models";
 import { useRouterSessionInfo } from "./use-router-session-info";
 
 interface InfoPanelProps {
@@ -131,6 +132,11 @@ export function InfoPanel({
         {latest ? (
           <p className="routey-panel__muted">Last routed {formatRelativeTime(latest.timestamp)}</p>
         ) : null}
+      </section>
+
+      <section className="routey-panel__section">
+        <h2 className="routey-panel__heading">Available models</h2>
+        <InfoAvailableModels api={api} />
       </section>
     </div>
   );

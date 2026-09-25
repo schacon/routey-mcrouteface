@@ -388,3 +388,26 @@
   align-items: center;
   gap: var(--space-1-5);
 }
+
+.routey-available-model {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.routey-available-model__use {
+  margin: 0;
+  color: var(--text);
+}
+
+.routey-available-models {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.routey-available-models__tier {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}

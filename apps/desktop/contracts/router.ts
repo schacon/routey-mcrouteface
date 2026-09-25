@@ -17,6 +17,23 @@ export type RouteMode = (typeof ROUTE_MODES)[number];
 export const ROUTE_THINKING_LEVELS = ["off", "low", "medium", "high"] as const;
 export type RouteThinkingLevel = (typeof ROUTE_THINKING_LEVELS)[number];
 
+export const DIFFICULTY_BANDS = ["easy", "moderate", "hard"] as const;
+export type DifficultyBand = (typeof DIFFICULTY_BANDS)[number];
+
+/** One task kind and difficulty the router would send to a model. */
+export interface RouteUse {
+  readonly taskKind: TaskKind;
+  readonly difficulty: DifficultyBand;
+}
+
+/** A usable roster model and every task kind and difficulty that would route to it. */
+export interface RosterModelUse {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly tier: ModelTier;
+  readonly uses: readonly RouteUse[];
+}
+
 export const MODEL_CAPABILITIES = [
   "coding",
   "general",
@@ -133,6 +150,8 @@ export interface RouterOverview {
   readonly laya: LayaStatus;
   readonly config: RouterConfig;
   readonly projects: readonly DiscoveredProject[];
+  /** Usable roster models and what the router would send to each. */
+  readonly modelUses: readonly RosterModelUse[];
   /** Models the runtime can use right now, for the roster editor. */
   readonly availableModels: readonly {
     readonly provider: string;
