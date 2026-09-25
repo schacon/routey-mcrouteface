@@ -69,6 +69,7 @@ test("visible app navigation and settings persistence without test hooks", async
           "Appearance",
           "Notifications",
           "Keyboard shortcuts",
+          "Router",
           "Providers",
           "Models",
           "General",
@@ -91,16 +92,12 @@ test("visible app navigation and settings persistence without test hooks", async
         await page.screenshot({ path: join(evidence, "before.png") });
         await toggle.click();
         await expect(toggle).toBeChecked({ checked: !original });
-        await page.getByRole("button", { name: "Back to app", exact: true }).click();
-        await page.getByRole("button", { name: "Skills", exact: true }).click();
+        await page.getByRole("button", { name: "Skills and extensions", exact: true }).click();
         await expect(page.getByTestId("skills-surface")).toBeVisible();
         await page.screenshot({ path: join(evidence, "surface-skills.png") });
         await page.waitForTimeout(600);
         await page.getByRole("button", { name: "Back to app", exact: true }).click();
-        await page
-          .getByRole("complementary")
-          .getByRole("button", { name: "New thread", exact: true })
-          .click();
+        await page.getByTestId("topbar-new-session").click();
         await expect(page.getByTestId("new-thread-composer")).toBeVisible();
         await page.getByTestId("new-thread-composer").fill("Visible verification draft");
         await expect(page.getByTestId("new-thread-composer")).toHaveValue(
