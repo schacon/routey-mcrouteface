@@ -22,6 +22,7 @@ import { DEFAULT_SCRATCH_DIRECTORY, RouterConfigStore } from "./router-config-st
 import type { Classification } from "./router-classifier";
 import { aggregateRouterStats } from "./router-stats";
 import { CONTINUATION_CUE } from "./router-signals";
+import { followUpAnchor, toolFloorKind } from "./session-routing";
 import { totalmem } from "node:os";
 import {
   LOCAL_MODEL_CATALOG,
@@ -426,9 +427,11 @@ export class RouterOwner {
     if (pending) {
       record = pending.record;
     } else {
-      const previous = (await this.log.read(sessionRef)).decisions.at(-1);
-      const continuation = previous && CONTINUATION_CUE.exec(prompt);
-      if (previous && continuation) {
+      const { decisions } = await this.log.read(sessionRef);
+      const previous = decisions.at(-1);
+      const anchor = followUpAnchor(decisions);
+      const continuation = anchor && CONTINUATION_CUE.exec(prompt);
+      if (anchor && continuation) {
         record = {
           promptExcerpt: prompt.slice(0, 200),
           firstTurn: false,
@@ -436,27 +439,44 @@ export class RouterOwner {
             kind: "heuristic",
             reason: `"${continuation[0].trim()}" continues the previous request`,
           },
-          signals: previous.signals,
+          signals: anchor.signals,
           answers: [],
           cues: [
             {
               signal: "continuation",
-              reason: `"${continuation[0].trim()}" keeps the previous routing`,
+              reason: `"${continuation[0].trim()}" keeps the routing of the turn it continues`,
             },
           ],
           decision: {
-            ...previous.decision,
+            ...anchor.decision,
             cwd: sessionCwd,
             reasons: [
-              "continues the previous request, so it keeps that turn's routing",
-              ...previous.decision.reasons,
+              anchor === previous
+                ? "continues the previous request, so it keeps that turn's routing"
+                : "continues the session's last turn with tools, so it keeps that routing",
+              ...anchor.decision.reasons,
             ],
           },
         };
       } else {
         const config = await this.config();
-        const classification = await this.classify(prompt, false, previous);
-        const decision = await this.resolve(prompt, classification, config, hasImages, sessionCwd);
+        let classification = await this.classify(prompt, false, previous, anchor);
+        let decision = await this.resolve(prompt, classification, config, hasImages, sessionCwd);
+        const floorKind = toolFloorKind(anchor, decision.mode);
+        if (floorKind) {
+          classification = {
+            ...classification,
+            taskKind: floorKind,
+            cues: [
+              ...classification.cues,
+              {
+                signal: "session",
+                reason: `this session uses tools, so the follow-up stays a ${floorKind} turn with them`,
+              },
+            ],
+          };
+          decision = await this.resolve(prompt, classification, config, hasImages, sessionCwd);
+        }
         const mentioned = classification.signals.mentionedProject;
         record = {
           promptExcerpt: prompt.slice(0, 200),
@@ -491,6 +511,7 @@ export class RouterOwner {
     prompt: string,
     firstTurn: boolean,
     previous?: RouterDecisionRecord,
+    anchor?: RouterDecisionRecord,
   ): Promise<Classification> {
     const [projects, classifier] = await Promise.all([
       this.projects(),
@@ -500,7 +521,10 @@ export class RouterOwner {
       projects: projects.map((project) => project.path),
       firstTurn,
       ...(previous
-        ? { previousPrompt: previous.promptExcerpt, previousKind: previous.decision.taskKind }
+        ? {
+            previousPrompt: previous.promptExcerpt,
+            previousKind: (anchor ?? previous).decision.taskKind,
+          }
         : {}),
     });
   }
