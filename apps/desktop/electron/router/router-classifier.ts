@@ -3,6 +3,7 @@ import type {
   RouterQuestionAnswer,
   RouterSignals,
   RouterSource,
+  TaskKind,
 } from "../../contracts/router";
 import type { LayaClassifier, LayaWireAnswer } from "./laya-client";
 import {
@@ -16,11 +17,14 @@ import {
 } from "./router-signals";
 
 export interface Classification {
+  readonly taskKind: TaskKind;
   readonly source: RouterSource;
   readonly signals: RouterSignals;
   readonly cues: readonly RouterCue[];
   readonly answers: readonly RouterQuestionAnswer[];
   readonly chosenProject?: string;
+  /** Why the selected classifier was not the one that answered, for the Inspector. */
+  readonly note?: string;
 }
 
 export interface ClassifyOptions {
@@ -81,6 +85,7 @@ export async function classifyPrompt(
     }
   }
   return {
+    taskKind: pickTaskKind(signals, cues),
     source,
     signals,
     cues,

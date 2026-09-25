@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { PiDesktopApi } from "../../../contracts/ipc";
 import {
   MODEL_CAPABILITIES,
+  type ClassifierChoice,
   MODEL_TIERS,
   type ModelCapability,
   type ModelTier,
@@ -34,6 +35,18 @@ function layaStatusText(overview: RouterOverview): string {
     case "unavailable":
       return `Unavailable: ${laya.message}`;
   }
+}
+
+function classifierChoiceKey(choice: ClassifierChoice): string {
+  return choice.kind === "ollama" ? `ollama:${choice.model}` : choice.kind;
+}
+
+function classifierLabel(overview: RouterOverview, choice: ClassifierChoice): string {
+  return (
+    overview.classifier.options.find(
+      (option) => classifierChoiceKey(option.choice) === classifierChoiceKey(choice),
+    )?.label ?? classifierChoiceKey(choice)
+  );
 }
 
 function modelKey(model: Pick<RosterModel, "provider" | "modelId">): string {
@@ -95,9 +108,39 @@ export function SettingsRouterSection({ api }: SettingsRouterSectionProps) {
       {error ? <p className="settings-row__description routey-settings__error">{error}</p> : null}
       <SettingsGroup
         title="Decision model"
-        description="Laya classifies every prompt on this Mac before it runs. Without it, keyword cues route instead."
+        description="Every prompt is classified on this Mac before it runs: what kind of task it is, how hard, whether it may change files, and which project."
       >
-        <SettingsRow title="Laya" description="Local Core ML model, loaded from the FluidUse cache.">
+        <SettingsRow
+          title="Classifier"
+          description={
+            classifierChoiceKey(overview.classifier.selected) === "auto"
+              ? `Automatic is using ${classifierLabel(overview, overview.classifier.active)}.`
+              : (overview.classifier.options.find(
+                  (option) =>
+                    classifierChoiceKey(option.choice) ===
+                    classifierChoiceKey(overview.classifier.selected),
+                )?.description ?? "")
+          }
+        >
+          <SettingsSelect
+            label="Classifier"
+            options={overview.classifier.options.map((option) => ({
+              value: classifierChoiceKey(option.choice),
+              label: option.available ? option.label : `${option.label} (not available)`,
+            }))}
+            value={classifierChoiceKey(overview.classifier.selected)}
+            onChange={(key) => {
+              const option = overview.classifier.options.find(
+                (candidate) => classifierChoiceKey(candidate.choice) === key,
+              );
+              if (option) save({ ...config, classifier: option.choice });
+            }}
+          />
+        </SettingsRow>
+        <SettingsRow
+          title="Laya"
+          description="Local Core ML model, loaded from the FluidUse cache."
+        >
           <span className="settings-row__value" data-testid="router-laya-status">
             {layaStatusText(overview)}
           </span>
@@ -123,7 +166,11 @@ export function SettingsRouterSection({ api }: SettingsRouterSectionProps) {
         {config.roster.map((model, index) => {
           const key = modelKey(model);
           return (
-            <div className="settings-row routey-settings__model" data-testid="router-model" key={key}>
+            <div
+              className="settings-row routey-settings__model"
+              data-testid="router-model"
+              key={key}
+            >
               <div className="settings-row__label">
                 <div className="settings-row__title">{model.modelId}</div>
                 <div className="settings-row__description">{model.provider}</div>

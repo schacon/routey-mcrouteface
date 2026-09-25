@@ -64,6 +64,8 @@ export interface RouterConfig {
   readonly excludedProjects: readonly string[];
   /** Working directory for prompts that need no project. */
   readonly scratchDirectory: string;
+  /** Absent means "auto". */
+  readonly classifier?: ClassifierChoice;
 }
 
 /** One Laya question and its answer, kept for the Inspector. */
@@ -94,8 +96,33 @@ export interface RouterSignals {
 }
 
 export type RouterSource =
+  | { readonly kind: "model"; readonly model: string; readonly latencyMs: number }
   | { readonly kind: "laya"; readonly latencyMs: number }
   | { readonly kind: "heuristic"; readonly reason: string };
+
+/**
+ * What classifies each prompt. "auto" uses the best local model from the
+ * ranked list that is installed, then Laya, then keyword cues.
+ */
+export type ClassifierChoice =
+  | { readonly kind: "auto" }
+  | { readonly kind: "ollama"; readonly model: string }
+  | { readonly kind: "laya" }
+  | { readonly kind: "keywords" };
+
+export interface ClassifierOption {
+  readonly choice: ClassifierChoice;
+  readonly label: string;
+  readonly description: string;
+  readonly available: boolean;
+}
+
+export interface ClassifierState {
+  readonly selected: ClassifierChoice;
+  /** What "auto" (or the selection) resolves to right now. */
+  readonly active: ClassifierChoice;
+  readonly options: readonly ClassifierOption[];
+}
 
 export interface RouteDecision {
   readonly taskKind: TaskKind;
@@ -119,6 +146,8 @@ export interface RouterDecisionRecord {
   readonly answers: readonly RouterQuestionAnswer[];
   readonly cues: readonly RouterCue[];
   readonly decision: RouteDecision;
+  /** Why the selected classifier did not answer (it failed and another stood in). */
+  readonly classifierNote?: string;
   /** Set when a follow-up seems to target a different project than the session's. */
   readonly suggestedProject?: string;
 }
@@ -150,6 +179,7 @@ export interface RouterOverview {
   readonly laya: LayaStatus;
   readonly config: RouterConfig;
   readonly projects: readonly DiscoveredProject[];
+  readonly classifier: ClassifierState;
   /** Usable roster models and what the router would send to each. */
   readonly modelUses: readonly RosterModelUse[];
   /** Models the runtime can use right now, for the roster editor. */
@@ -225,7 +255,7 @@ export function decodeRouterConfig(value: unknown): RouterConfig {
   const record = expectRecord(value, "routerConfig");
   rejectUnknownKeys(
     record,
-    ["version", "roster", "pinnedProjects", "excludedProjects", "scratchDirectory"],
+    ["version", "roster", "pinnedProjects", "excludedProjects", "scratchDirectory", "classifier"],
     "routerConfig",
   );
   if (record.version !== 1) throw new TypeError("routerConfig.version must be 1");
@@ -238,7 +268,36 @@ export function decodeRouterConfig(value: unknown): RouterConfig {
     pinnedProjects: expectStringArray(record.pinnedProjects, "routerConfig.pinnedProjects"),
     excludedProjects: expectStringArray(record.excludedProjects, "routerConfig.excludedProjects"),
     scratchDirectory,
+    ...(record.classifier === undefined
+      ? {}
+      : { classifier: decodeClassifierChoice(record.classifier) }),
   };
+}
+
+export function decodeClassifierChoice(value: unknown): ClassifierChoice {
+  const record = expectRecord(value, "classifier");
+  switch (record.kind) {
+    case "auto":
+    case "laya":
+    case "keywords":
+      rejectUnknownKeys(record, ["kind"], "classifier");
+      return { kind: record.kind };
+    case "ollama": {
+      rejectUnknownKeys(record, ["kind", "model"], "classifier");
+      const model = expectString(record.model, "classifier.model").trim();
+      if (!model) throw new TypeError("classifier.model is empty");
+      return { kind: "ollama", model };
+    }
+    default:
+      throw new TypeError("classifier.kind must be auto, ollama, laya or keywords");
+  }
+}
+
+export function sameClassifier(left: ClassifierChoice, right: ClassifierChoice): boolean {
+  return (
+    left.kind === right.kind &&
+    (left.kind !== "ollama" || (right.kind === "ollama" && left.model === right.model))
+  );
 }
 
 export function decodeStartRoutedSessionInput(value: unknown): StartRoutedSessionInput {

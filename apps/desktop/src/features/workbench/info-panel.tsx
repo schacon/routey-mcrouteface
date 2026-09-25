@@ -92,7 +92,13 @@ export function InfoPanel({
             <dt>Thinking</dt>
             <dd>{latest.decision.thinkingLevel}</dd>
             <dt>Routed by</dt>
-            <dd>{latest.source.kind === "laya" ? "Laya" : "heuristics"}</dd>
+            <dd>
+              {latest.source.kind === "model"
+                ? latest.source.model
+                : latest.source.kind === "laya"
+                  ? "Laya"
+                  : "keyword cues"}
+            </dd>
           </dl>
         ) : (
           <p className="routey-panel__muted">

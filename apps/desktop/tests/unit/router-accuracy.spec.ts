@@ -1,10 +1,15 @@
 import { basename, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import type { RosterModel, RouterConfig, TaskKind } from "../../contracts/router";
-import { LayaProcessClient, type LayaClassifier } from "../../electron/router/laya-client";
+import { LayaProcessClient } from "../../electron/router/laya-client";
+import { ollamaBaseUrl } from "../../electron/router/ollama-client";
 import { resolveRouteDecision } from "../../electron/router/route-policy";
-import { classifyPrompt } from "../../electron/router/router-classifier";
-import { pickTaskKind } from "../../electron/router/router-signals";
+import {
+  keywordClassifier,
+  layaTaskClassifier,
+  ollamaTaskClassifier,
+  type TaskClassifier,
+} from "../../electron/router/task-classifiers";
 import {
   EVAL_PROJECTS,
   ROUTER_EVAL_CASES,
@@ -61,12 +66,7 @@ const config: RouterConfig = {
 /** "All correct" counts from the latest run of each set, heuristics only. */
 const HEURISTIC_FLOORS = { tuned: 50, heldOut: 17 } as const;
 
-const heuristicsOnly: LayaClassifier = {
-  status: () => ({ state: "unavailable", message: "heuristics-only eval" }),
-  warm: () => undefined,
-  answer: () => Promise.reject(new Error("heuristics-only eval")),
-  dispose: () => undefined,
-};
+const heuristicsOnly = keywordClassifier();
 
 interface Score {
   readonly scored: number;
@@ -94,7 +94,7 @@ const pct = (score: Score) =>
     : `${score.correct}/${score.scored} (${Math.round((100 * score.correct) / score.scored)}%)`;
 
 async function runEval(
-  laya: LayaClassifier,
+  classifier: TaskClassifier,
   source: string,
   cases: readonly RouterEvalCase[],
 ): Promise<EvalReport> {
@@ -108,11 +108,11 @@ async function runEval(
   const misses: { prompt: string; expected: string; got: string }[] = [];
 
   for (const testCase of cases) {
-    const classification = await classifyPrompt(laya, testCase.prompt, {
+    const classification = await classifier.classify(testCase.prompt, {
       projects: EVAL_PROJECTS,
       firstTurn: true,
     });
-    const taskKind: TaskKind = pickTaskKind(classification.signals, classification.cues);
+    const taskKind: TaskKind = classification.taskKind;
     const decision = resolveRouteDecision({
       taskKind,
       signals: classification.signals,
@@ -199,8 +199,9 @@ test("Laya routing accuracy", async ({}, testInfo) => {
     laya.warm();
     // Loading the Core ML buckets takes a few seconds; score only once Laya is ready.
     await expect.poll(() => laya.status().state, { timeout: 60_000 }).toBe("ready");
-    const tuned = await runEval(laya, "Laya + cues, tuning set", ROUTER_EVAL_CASES);
-    const heldOut = await runEval(laya, "Laya + cues, held-out", ROUTER_HELDOUT_CASES);
+    const classifier = layaTaskClassifier(laya);
+    const tuned = await runEval(classifier, "Laya + cues, tuning set", ROUTER_EVAL_CASES);
+    const heldOut = await runEval(classifier, "Laya + cues, held-out", ROUTER_HELDOUT_CASES);
     printReport(tuned);
     printReport(heldOut);
     await testInfo.attach("router-accuracy-laya.json", {
@@ -210,4 +211,24 @@ test("Laya routing accuracy", async ({}, testInfo) => {
   } finally {
     laya.dispose();
   }
+});
+
+test("local model classifier accuracy", async ({}, testInfo) => {
+  const selected = process.env.ROUTEY_EVAL_CLASSIFIER?.trim();
+  test.skip(
+    !selected?.startsWith("ollama:"),
+    "Set ROUTEY_EVAL_CLASSIFIER=ollama:<model> to score a local model classifier.",
+  );
+  test.setTimeout(300_000);
+  const model = (selected ?? "").slice("ollama:".length);
+  const classifier = ollamaTaskClassifier(await ollamaBaseUrl(), model, keywordClassifier());
+  await classifier.classify("warm up", { projects: [], firstTurn: false });
+  const tuned = await runEval(classifier, `${model}, tuning set`, ROUTER_EVAL_CASES);
+  const heldOut = await runEval(classifier, `${model}, held-out`, ROUTER_HELDOUT_CASES);
+  printReport(tuned);
+  printReport(heldOut);
+  await testInfo.attach("router-accuracy-model.json", {
+    body: JSON.stringify({ model, tuned, heldOut }, null, 2),
+    contentType: "application/json",
+  });
 });

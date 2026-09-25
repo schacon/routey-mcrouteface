@@ -69,12 +69,12 @@ test("starts a routed session from the text box and explains the decision", asyn
       )
       .toContain(promptText);
 
-    // Tests route without Laya: the Info panel opens by default and the
-    // Inspector says heuristics decided.
+    // Tests route without Laya or Ollama: the Info panel opens by default and
+    // the Inspector says keyword cues decided.
     await expect(window.getByTestId("info-cwd")).toHaveText(workspacePath, { timeout: 15_000 });
     await window.getByTestId("workbench-tab-inspector").click();
     const turn = window.getByTestId("inspector-turn").first();
-    await expect(turn).toContainText("heuristics only");
+    await expect(turn).toContainText("keyword cues only");
     await expect(turn).toContainText("first turn");
   } finally {
     await harness.close();

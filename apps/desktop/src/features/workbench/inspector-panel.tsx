@@ -1,12 +1,28 @@
 import { useState } from "react";
 import type { PiDesktopApi } from "../../../contracts/ipc";
-import type { RouterDecisionRecord, RouterQuestionAnswer } from "../../../contracts/router";
+import type {
+  RouterDecisionRecord,
+  RouterQuestionAnswer,
+  RouterSource,
+} from "../../../contracts/router";
 import { formatRelativeTime } from "../../lib/string-utils";
 import { useRouterSessionInfo } from "./use-router-session-info";
 
 interface InspectorPanelProps {
   readonly api: PiDesktopApi;
   readonly target: { readonly workspaceId: string; readonly sessionId: string } | null;
+}
+
+/** Which classifier routed a turn, and how long it took. */
+export function routerSourceLabel(source: RouterSource): string {
+  switch (source.kind) {
+    case "model":
+      return `${source.model} · ${Math.round(source.latencyMs)} ms`;
+    case "laya":
+      return `Laya · ${Math.round(source.latencyMs)} ms`;
+    case "heuristic":
+      return "keyword cues only";
+  }
 }
 
 function Probabilities({ answer }: { readonly answer: RouterQuestionAnswer }) {
@@ -60,15 +76,19 @@ function DecisionRow({
           <span>thinking {decision.thinkingLevel}</span>
         </span>
         <span className="routey-panel__muted">
-          {source.kind === "laya" ? `Laya · ${Math.round(source.latencyMs)} ms` : "heuristics only"}{" "}
-          · {formatRelativeTime(record.timestamp)}
+          {routerSourceLabel(source)} · {formatRelativeTime(record.timestamp)}
           {record.firstTurn ? " · first turn" : ""}
         </span>
       </button>
       {expanded ? (
         <div className="routey-inspector__details">
-          {source.kind === "heuristic" ? (
-            <p className="routey-inspector__warning">Laya was not used: {source.reason}</p>
+          {record.classifierNote ? (
+            <p className="routey-inspector__warning">{record.classifierNote}</p>
+          ) : null}
+          {source.kind === "heuristic" && !record.classifierNote ? (
+            <p className="routey-inspector__warning">
+              Only keyword cues were used: {source.reason}
+            </p>
           ) : null}
           {record.suggestedProject ? (
             <p className="routey-inspector__warning">

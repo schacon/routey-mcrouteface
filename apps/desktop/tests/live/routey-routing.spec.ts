@@ -56,6 +56,7 @@ test("routes a new session, explains the decision, and shows GitButler status", 
     envOverrides: {
       ROUTEY_HOME: homedir(),
       ROUTEY_SCRATCH_DIRECTORY: undefined,
+      ROUTEY_OLLAMA_URL: undefined,
       ...(helper ? { ROUTEY_LAYA_HELPER: resolve(helper) } : {}),
     },
   });

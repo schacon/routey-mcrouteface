@@ -369,6 +369,8 @@ function buildDesktopLaunchEnv(
     // test's first workspace instead of ~/routey-mcrouteface.
     ROUTEY_HOME: `${userDataDir}-routey-home`,
     ROUTEY_SCRATCH_DIRECTORY: options.initialWorkspaces?.[0] ?? `${userDataDir}-routey-scratch`,
+    // A closed port: routing never classifies with the machine's own Ollama models.
+    ROUTEY_OLLAMA_URL: "http://127.0.0.1:9",
     ...(options.envOverrides ?? {}),
   };
   for (const [key, value] of Object.entries(options.envOverrides ?? {})) {
@@ -1654,7 +1656,10 @@ export async function clickSession(window: Page, sessionTitle: string): Promise<
   const palette = window.getByTestId("command-palette");
   await expect(palette).toBeVisible({ timeout: 15_000 });
   await window.getByTestId("command-palette-input").fill(sessionTitle);
-  await palette.getByRole("option", { name: new RegExp(escapeRegExp(sessionTitle)) }).first().click();
+  await palette
+    .getByRole("option", { name: new RegExp(escapeRegExp(sessionTitle)) })
+    .first()
+    .click();
   await expect(palette).toBeHidden();
 }
 
@@ -1691,7 +1696,11 @@ export async function startThreadFromSurface(
   // The New session box has no workspace or environment picker; the router
   // decides. A test that needs a specific checkout starts it directly.
   if (workspaceName || environment === "worktree") {
-    await startThreadViaIpc(window, { environment, prompt, ...(workspaceName ? { workspaceName } : {}) });
+    await startThreadViaIpc(window, {
+      environment,
+      prompt,
+      ...(workspaceName ? { workspaceName } : {}),
+    });
     return;
   }
 
