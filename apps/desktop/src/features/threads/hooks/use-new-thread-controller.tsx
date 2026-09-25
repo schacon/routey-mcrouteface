@@ -113,6 +113,12 @@ export function useNewThreadController({
     if (!prompt.trim() && attachments.length === 0) {
       return;
     }
+    // Slash commands act on a session; a new session has none yet.
+    const command = /^\s*(\/\S+)/.exec(prompt)?.[1];
+    if (command) {
+      setComposerError(`${command} is only available inside an existing session.`);
+      return;
+    }
     startingGenerationRef.current = generation;
     setStarting(true);
     void updateSnapshot(setSnapshot, () => api.startRoutedSession({ prompt, attachments }))
