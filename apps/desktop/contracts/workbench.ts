@@ -9,6 +9,7 @@ export const BUILTIN_TOOL_KINDS = [
   "info",
   "inspector",
   "stats",
+  "routing",
   "gitbutler",
   "files",
   "terminal",

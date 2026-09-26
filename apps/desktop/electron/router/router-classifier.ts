@@ -15,6 +15,7 @@ import {
   projectQuestion,
   toQuestionAnswers,
 } from "./router-signals";
+import type { RunnableSpecialty } from "../../contracts/specialties";
 
 export interface Classification {
   readonly taskKind: TaskKind;
@@ -25,6 +26,8 @@ export interface Classification {
   readonly chosenProject?: string;
   /** Why the selected classifier was not the one that answered, for the Inspector. */
   readonly note?: string;
+  /** A media task a specialty tool runs this turn. */
+  readonly specialty?: RunnableSpecialty;
 }
 
 export interface ClassifyOptions {

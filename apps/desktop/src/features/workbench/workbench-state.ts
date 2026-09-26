@@ -35,7 +35,7 @@ export function initialWorkbenchView(
 ): TaskWorkbenchTemplate {
   return {
     visibility,
-    tools: [{ kind: "info" }, { kind: "inspector" }, { kind: "stats" }],
+    tools: [{ kind: "info" }, { kind: "inspector" }, { kind: "routing" }, { kind: "stats" }],
     selection: { kind: "tool", toolId: "info" },
     files: { workspaceId, tabs: EMPTY_FILE_TABS },
     changes: { workspaceId, selectedPath: null, scope: { kind: "uncommitted" } },

@@ -25,6 +25,7 @@ import { GitButlerPanel } from "../features/workbench/gitbutler-panel";
 import { InfoPanel } from "../features/workbench/info-panel";
 import { InspectorPanel } from "../features/workbench/inspector-panel";
 import { StatsPanel } from "../features/workbench/stats-panel";
+import { RoutingPanel } from "../features/routing/routing-panel";
 import { useWorkbench } from "../features/workbench/use-workbench";
 import {
   ExtensionViewPanel,
@@ -1272,6 +1273,19 @@ export default function App() {
                     workspacePath={selectedWorkspace.path}
                     sessionTitle={displayedSessionTitle}
                     onOpenInspector={() => workbench.openTool({ kind: "inspector" })}
+                  />
+                ),
+                routing: () => (
+                  <RoutingPanel
+                    api={api}
+                    variant="panel"
+                    onSignInOpenRouter={() => {
+                      void updateSnapshot(setSnapshot, () =>
+                        api.loginProvider(selectedWorkspace.id, "openrouter"),
+                      ).catch((error: unknown) => {
+                        console.error("[renderer] OpenRouter sign-in failed", error);
+                      });
+                    }}
                   />
                 ),
                 stats: () => (

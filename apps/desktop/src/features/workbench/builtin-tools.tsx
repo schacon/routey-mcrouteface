@@ -35,6 +35,11 @@ export const BUILTIN_TOOLS = {
     description: "Turns and tokens per model, for this session or all sessions",
     Icon: ModelIcon,
   },
+  routing: {
+    label: "Routing",
+    description: "The decision matrix: which model runs each kind of task, and why",
+    Icon: ModelIcon,
+  },
   gitbutler: {
     label: "GitButler",
     description: "Branches, commits and uncommitted changes from but status",

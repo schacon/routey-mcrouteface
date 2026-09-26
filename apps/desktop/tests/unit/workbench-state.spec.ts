@@ -18,7 +18,7 @@ test("tasks without a saved layout open the workbench on Info, with the Inspecto
   const existing = initialWorkbenchView("checkout");
   expect(existing).toMatchObject({
     visibility: "visible",
-    tools: [{ kind: "info" }, { kind: "inspector" }, { kind: "stats" }],
+    tools: [{ kind: "info" }, { kind: "inspector" }, { kind: "routing" }, { kind: "stats" }],
     selection: { kind: "tool", toolId: "info" },
     changes: { scope: { kind: "uncommitted" }, workspaceId: "checkout", selectedPath: null },
   });
@@ -127,7 +127,12 @@ test("restore rebases early explicit actions without losing saved tools or docum
   // A second window can load the durable template without mutating the first window's value.
   const secondWindow = restoreWorkbenchView(initialWorkbenchView("checkout"), saved, []).view;
   const editedSecond = reduceWorkbench(secondWindow, { type: "close-tool", toolId: "files" });
-  expect(editedSecond.tools).toEqual([{ kind: "info" }, { kind: "inspector" }, { kind: "stats" }]);
+  expect(editedSecond.tools).toEqual([
+    { kind: "info" },
+    { kind: "inspector" },
+    { kind: "routing" },
+    { kind: "stats" },
+  ]);
   expect(saved.tools).toEqual([
     { kind: "info" },
     { kind: "inspector" },

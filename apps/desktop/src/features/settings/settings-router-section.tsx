@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { PiDesktopApi } from "../../../contracts/ipc";
 import {
   MODEL_CAPABILITIES,
-  type ClassifierChoice,
   MODEL_TIERS,
   type ModelCapability,
   type ModelTier,
@@ -11,12 +10,14 @@ import {
   type RouterOverview,
 } from "../../../contracts/router";
 import { formatRelativeTime } from "../../lib/string-utils";
+import { RoutingPanel } from "../routing/routing-panel";
 import { LocalModelSetupGuide } from "./local-model-setup";
 import { SettingsSelect } from "./settings-controls";
 import { SettingsGroup, SettingsRow } from "./settings-utils";
 
 interface SettingsRouterSectionProps {
   readonly api: PiDesktopApi;
+  readonly onSignInOpenRouter: () => void;
 }
 
 const TIER_OPTIONS = MODEL_TIERS.map((tier) => ({
@@ -38,24 +39,12 @@ function layaStatusText(overview: RouterOverview): string {
   }
 }
 
-function classifierChoiceKey(choice: ClassifierChoice): string {
-  return choice.kind === "ollama" ? `ollama:${choice.model}` : choice.kind;
-}
-
-function classifierLabel(overview: RouterOverview, choice: ClassifierChoice): string {
-  return (
-    overview.classifier.options.find(
-      (option) => classifierChoiceKey(option.choice) === classifierChoiceKey(choice),
-    )?.label ?? classifierChoiceKey(choice)
-  );
-}
-
 function modelKey(model: Pick<RosterModel, "provider" | "modelId">): string {
   return `${model.provider}/${model.modelId}`;
 }
 
 /** The model roster the router picks from, the projects it may work in, and Laya's state. */
-export function SettingsRouterSection({ api }: SettingsRouterSectionProps) {
+export function SettingsRouterSection({ api, onSignInOpenRouter }: SettingsRouterSectionProps) {
   const [overview, setOverview] = useState<RouterOverview | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [addKey, setAddKey] = useState<string | undefined>();
@@ -108,6 +97,15 @@ export function SettingsRouterSection({ api }: SettingsRouterSectionProps) {
     <>
       {error ? <p className="settings-row__description routey-settings__error">{error}</p> : null}
       <SettingsGroup
+        title="Routing"
+        description="Which model runs each kind of task at each difficulty, the classifier that decides, and the engines for images and audio."
+      >
+        <div className="settings-row">
+          <RoutingPanel api={api} onSignInOpenRouter={onSignInOpenRouter} variant="settings" />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup
         title="Local models"
         description="Small models on this Mac take easy work and classify every prompt."
       >
@@ -118,35 +116,8 @@ export function SettingsRouterSection({ api }: SettingsRouterSectionProps) {
 
       <SettingsGroup
         title="Decision model"
-        description="Every prompt is classified on this Mac before it runs: what kind of task it is, how hard, whether it may change files, and which project."
+        description="Laya, the on-device fallback classifier, and where prompts without a project run."
       >
-        <SettingsRow
-          title="Classifier"
-          description={
-            classifierChoiceKey(overview.classifier.selected) === "auto"
-              ? `Automatic is using ${classifierLabel(overview, overview.classifier.active)}.`
-              : (overview.classifier.options.find(
-                  (option) =>
-                    classifierChoiceKey(option.choice) ===
-                    classifierChoiceKey(overview.classifier.selected),
-                )?.description ?? "")
-          }
-        >
-          <SettingsSelect
-            label="Classifier"
-            options={overview.classifier.options.map((option) => ({
-              value: classifierChoiceKey(option.choice),
-              label: option.available ? option.label : `${option.label} (not available)`,
-            }))}
-            value={classifierChoiceKey(overview.classifier.selected)}
-            onChange={(key) => {
-              const option = overview.classifier.options.find(
-                (candidate) => classifierChoiceKey(candidate.choice) === key,
-              );
-              if (option) save({ ...config, classifier: option.choice });
-            }}
-          />
-        </SettingsRow>
         <SettingsRow
           title="Laya"
           description="Local Core ML model, loaded from the FluidUse cache."

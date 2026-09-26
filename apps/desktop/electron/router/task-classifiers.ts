@@ -69,7 +69,7 @@ export function layaTaskClassifier(laya: LayaClassifier): TaskClassifier {
   };
 }
 
-function classifierSystemPrompt(projectNames: readonly string[]): string {
+export function classifierSystemPrompt(projectNames: readonly string[]): string {
   return `You route requests for a desktop AI assistant. Classify the user's request.
 kind:
 - "coding": software work: writing, changing, running, debugging or explaining code, scripts, repos, builds, shell commands.

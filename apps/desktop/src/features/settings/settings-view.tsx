@@ -162,7 +162,12 @@ export function SettingsView({
 
           {section === "shortcuts" ? <SettingsShortcutsSection platform={platform} /> : null}
 
-          {section === "router" ? <SettingsRouterSection api={api} /> : null}
+          {section === "router" ? (
+            <SettingsRouterSection
+              api={api}
+              onSignInOpenRouter={() => onLoginProvider("openrouter")}
+            />
+          ) : null}
 
           {section === "providers" ? (
             <SettingsProvidersSection

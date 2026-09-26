@@ -942,7 +942,10 @@ app
           extensionViews.invalidateRuntime(target, generation),
       },
       extensionFactories: [
-        createRouteyModeExtension((sessionId) => router?.modeFor(sessionId)),
+        createRouteyModeExtension({
+          turnFor: (sessionId) => router?.turnFor(sessionId),
+          engineFor: async (kind) => router?.engineFor(kind),
+        }),
         createOrchestrationRuntimeExtension(orchestrationRuntimeBridge),
         createScheduledTaskRuntimeExtension(scheduledTaskRuntimeBridge, (ctx) => {
           try {

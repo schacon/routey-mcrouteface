@@ -9,7 +9,6 @@ import type {
   ModelTokenUsage,
   RouterStats,
   RouteDecision,
-  RouteMode,
   RouterConfig,
   RouterDecisionRecord,
   RouterOverview,
@@ -17,7 +16,27 @@ import type {
 } from "../../contracts/router";
 import { DecisionLogStore } from "./decision-log-store";
 import type { LayaClassifier } from "./laya-client";
-import { resolveRouteDecision, rosterModelUses, type AvailableModel } from "./route-policy";
+import {
+  resolveRouteDecision,
+  rosterModelUses,
+  routeMatrix,
+  type AvailableModel,
+} from "./route-policy";
+import { cellSuggestions } from "./cell-suggestions";
+import type { RoutedTurn } from "./routey-mode-extension";
+import { detectSpecialty } from "./specialty-cues";
+import {
+  activeEngine,
+  findCommands,
+  LOCAL_TOOL_COMMANDS,
+  specialtyStatuses,
+  type EngineEnvironment,
+} from "./specialty-engines";
+import {
+  isRunnableSpecialty,
+  type RunnableSpecialty,
+  type SpecialtyEngineRef,
+} from "../../contracts/specialties";
 import { DEFAULT_SCRATCH_DIRECTORY, RouterConfigStore } from "./router-config-store";
 import type { Classification } from "./router-classifier";
 import { aggregateRouterStats } from "./router-stats";
@@ -34,6 +53,7 @@ import { buildLocalModelSetup } from "./local-model-setup";
 import { listOllamaModels, ollamaBaseUrl, pullOllamaModel, warmOllamaModel } from "./ollama-client";
 import {
   OLLAMA_CLASSIFIER_RANKING,
+  classifierSystemPrompt,
   keywordClassifier,
   layaTaskClassifier,
   ollamaTaskClassifier,
@@ -77,6 +97,7 @@ export interface PendingRoute {
 const DISCOVERY_TTL_MS = 10 * 60 * 1000;
 const OLLAMA_MODELS_TTL_MS = 60 * 1000;
 const PURPOSE_REFRESH_EVERY = 5;
+const TOOLS_TTL_MS = 60 * 1000;
 
 /**
  * Classifies every user turn and turns the result into a model, thinking level,
@@ -86,7 +107,7 @@ const PURPOSE_REFRESH_EVERY = 5;
 export class RouterOwner {
   private readonly configStore: RouterConfigStore;
   private readonly log: DecisionLogStore;
-  private readonly modesBySessionId = new Map<string, RouteMode>();
+  private readonly turnsBySessionId = new Map<string, RoutedTurn>();
   private readonly pendingBySessionKey = new Map<string, PendingRoute>();
   private readonly turnCountBySessionKey = new Map<string, number>();
   private readonly routedSessionKeys = new Set<string>();
@@ -97,6 +118,7 @@ export class RouterOwner {
     { readonly at: number; readonly models: readonly string[] | undefined } | undefined;
   private projectsCache:
     { readonly at: number; readonly projects: DiscoveredProject[] } | undefined;
+  private toolsCache: { readonly at: number; readonly commands: Set<string> } | undefined;
 
   constructor(
     userDataDir: string,
@@ -203,8 +225,30 @@ export class RouterOwner {
     return model ? ollamaTaskClassifier(await this.ollamaUrl(), model, fallback) : fallback;
   }
 
-  modeFor(sessionId: string): RouteMode | undefined {
-    return this.modesBySessionId.get(sessionId);
+  turnFor(sessionId: string): RoutedTurn | undefined {
+    return this.turnsBySessionId.get(sessionId);
+  }
+
+  /** Whether OpenRouter is signed in and which local media tools are installed. */
+  private async engineEnvironment(scratchDirectory: string): Promise<EngineEnvironment> {
+    const cached = this.toolsCache;
+    const commands =
+      cached && Date.now() - cached.at < TOOLS_TTL_MS
+        ? cached.commands
+        : await findCommands(LOCAL_TOOL_COMMANDS);
+    this.toolsCache = { at: Date.now(), commands };
+    const routable = await this.host.routableModels(scratchDirectory);
+    return {
+      openRouterConnected: routable.models.some((model) => model.provider === "openrouter"),
+      commands,
+      platform: process.platform,
+    };
+  }
+
+  /** The engine that runs a specialty tool now. */
+  async engineFor(kind: RunnableSpecialty): Promise<SpecialtyEngineRef | undefined> {
+    const config = await this.config();
+    return activeEngine(kind, config, await this.engineEnvironment(config.scratchDirectory));
   }
 
   async config(): Promise<RouterConfig> {
@@ -221,14 +265,22 @@ export class RouterOwner {
 
   async overview(): Promise<RouterOverview> {
     const config = await this.config();
-    const [projects, routable] = await Promise.all([
+    // Rescan for newly installed tools each time the panel opens.
+    this.toolsCache = undefined;
+    const [projects, routable, environment] = await Promise.all([
       this.projects(),
       this.host.routableModels(config.scratchDirectory),
+      this.engineEnvironment(config.scratchDirectory),
     ]);
     return {
       laya: this.laya.status(),
       config,
       classifier: await this.classifierState(config),
+      classifierPrompt: classifierSystemPrompt(projects.map((project) => basename(project.path))),
+      matrix: routeMatrix(config, routable.models),
+      suggestions: cellSuggestions(config, routable.models),
+      specialties: specialtyStatuses(config, environment),
+      openRouterConnected: environment.openRouterConnected,
       modelUses: rosterModelUses(config, routable.models),
       projects,
       availableModels: routable.models.map((model) => ({
@@ -384,7 +436,12 @@ export class RouterOwner {
   /** Decide a new session's first turn, including where it runs. */
   async decideFirstTurn(prompt: string, hasImages: boolean): Promise<PendingRoute> {
     const config = await this.config();
-    const classification = await this.classify(prompt, true);
+    const classification = await this.withSpecialty(
+      await this.classify(prompt, true),
+      prompt,
+      hasImages,
+      config,
+    );
     const decision = await this.resolve(prompt, classification, config, hasImages, undefined);
     if (decision.cwd === config.scratchDirectory) {
       await mkdir(config.scratchDirectory, { recursive: true });
@@ -407,7 +464,7 @@ export class RouterOwner {
   adoptFirstTurn(sessionRef: SessionRef, pending: PendingRoute): void {
     this.pendingBySessionKey.set(keyOf(sessionRef), pending);
     this.startedSessionKeys.add(keyOf(sessionRef));
-    this.modesBySessionId.set(sessionRef.sessionId, pending.record.decision.mode);
+    this.turnsBySessionId.set(sessionRef.sessionId, routedTurn(pending.record.decision));
   }
 
   /**
@@ -460,7 +517,12 @@ export class RouterOwner {
         };
       } else {
         const config = await this.config();
-        let classification = await this.classify(prompt, false, previous, anchor);
+        let classification = await this.withSpecialty(
+          await this.classify(prompt, false, previous, anchor),
+          prompt,
+          hasImages,
+          config,
+        );
         let decision = await this.resolve(prompt, classification, config, hasImages, sessionCwd);
         const floorKind = toolFloorKind(anchor, decision.mode);
         if (floorKind) {
@@ -491,7 +553,7 @@ export class RouterOwner {
         };
       }
     }
-    this.modesBySessionId.set(sessionRef.sessionId, record.decision.mode);
+    this.turnsBySessionId.set(sessionRef.sessionId, routedTurn(record.decision));
     this.routedSessionKeys.add(key);
     await this.log.append(sessionRef, {
       ...record,
@@ -546,7 +608,37 @@ export class RouterOwner {
       hasImages,
       ...(sessionCwd ? { sessionCwd } : {}),
       ...(classification.chosenProject ? { chosenProject: classification.chosenProject } : {}),
+      ...(classification.specialty ? { specialty: classification.specialty } : {}),
     });
+  }
+
+  /** Adds a media specialty the prompt asks for, when an engine can run it. */
+  private async withSpecialty(
+    classification: Classification,
+    prompt: string,
+    hasImages: boolean,
+    config: RouterConfig,
+  ): Promise<Classification> {
+    const cue = detectSpecialty(prompt, hasImages);
+    if (!cue) return classification;
+    const engine = activeEngine(
+      cue.kind,
+      config,
+      await this.engineEnvironment(config.scratchDirectory),
+    );
+    return {
+      ...classification,
+      ...(engine ? { specialty: cue.kind } : {}),
+      cues: [
+        ...classification.cues,
+        {
+          signal: "specialty",
+          reason: engine
+            ? `${cue.reason}: ${cue.kind} tool`
+            : `${cue.reason}, but no ${cue.kind} engine is set up in Settings → Routing`,
+        },
+      ],
+    };
   }
 
   private async projects(): Promise<DiscoveredProject[]> {
@@ -601,6 +693,14 @@ export class RouterOwner {
       console.error(`[router] purpose for ${basename(cwd)} failed`, error);
     });
   }
+}
+
+function routedTurn(decision: RouteDecision): RoutedTurn {
+  const specialty = decision.specialty;
+  return {
+    mode: decision.mode,
+    ...(specialty && isRunnableSpecialty(specialty) ? { specialty } : {}),
+  };
 }
 
 function keyOf(sessionRef: SessionRef): string {

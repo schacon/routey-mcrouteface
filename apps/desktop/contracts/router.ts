@@ -1,3 +1,11 @@
+import {
+  SPECIALTY_KINDS,
+  SPECIALTY_RUNTIMES,
+  type SpecialtyEngineRef,
+  type SpecialtyKind,
+  type SpecialtyStatus,
+} from "./specialties";
+
 /**
  * Routey's turn router: every user turn is classified, then run with the model,
  * thinking level, mode and (on a session's first turn) working directory the
@@ -19,6 +27,18 @@ export type RouteThinkingLevel = (typeof ROUTE_THINKING_LEVELS)[number];
 
 export const DIFFICULTY_BANDS = ["easy", "moderate", "hard"] as const;
 export type DifficultyBand = (typeof DIFFICULTY_BANDS)[number];
+
+export interface ModelRef {
+  readonly provider: string;
+  readonly modelId: string;
+}
+
+/** A routing-matrix cell: one task kind at one difficulty. */
+export type RouteCellKey = `${TaskKind}:${DifficultyBand}`;
+
+export function routeCellKey(taskKind: TaskKind, difficulty: DifficultyBand): RouteCellKey {
+  return `${taskKind}:${difficulty}`;
+}
 
 /** One task kind and difficulty the router would send to a model. */
 export interface RouteUse {
@@ -66,6 +86,10 @@ export interface RouterConfig {
   readonly scratchDirectory: string;
   /** Absent means "auto". */
   readonly classifier?: ClassifierChoice;
+  /** Matrix cells pinned to a model instead of the roster's order. */
+  readonly routes?: Readonly<Partial<Record<RouteCellKey, ModelRef>>>;
+  /** The engine chosen for each specialty; absent means the first usable one. */
+  readonly specialties?: Readonly<Partial<Record<SpecialtyKind, SpecialtyEngineRef>>>;
 }
 
 /** One Laya question and its answer, kept for the Inspector. */
@@ -133,6 +157,8 @@ export interface RouteDecision {
   readonly mode: RouteMode;
   readonly cwd: string;
   readonly reasons: readonly string[];
+  /** A narrow task (image, audio) the turn's tools handle. */
+  readonly specialty?: SpecialtyKind;
 }
 
 export interface RouterDecisionRecord {
@@ -175,11 +201,51 @@ export interface DiscoveredProject {
   readonly sources: readonly ("claude" | "codex" | "pi" | "cursor" | "routey")[];
 }
 
+/** One cell of the routing matrix as the router would resolve it right now. */
+export interface RouteMatrixCell {
+  readonly key: RouteCellKey;
+  readonly taskKind: TaskKind;
+  readonly difficulty: DifficultyBand;
+  readonly preferredTier: ModelTier;
+  readonly thinkingLevel: RouteThinkingLevel;
+  readonly mode: RouteMode;
+  /** The model this cell runs on, if any is usable. */
+  readonly pick?: ModelRef & { readonly tier: ModelTier };
+  /** The cell is pinned, not following roster order. */
+  readonly pinned: boolean;
+  /** The pinned model is not usable right now, so roster order applies. */
+  readonly pinnedUnavailable?: ModelRef;
+}
+
+/** A catalog suggestion for a matrix cell, resolved against this machine. */
+export interface CellSuggestion {
+  readonly name: string;
+  readonly note: string;
+  readonly price?: string;
+  readonly tier: ModelTier;
+  /** The way to reach it: a connected provider when possible, else the catalog's first. */
+  readonly ref: ModelRef;
+  /**
+   * routed: in the roster; add: usable now; pull: an Ollama download away;
+   * sign-in: needs OpenRouter (or its own provider) connected.
+   */
+  readonly state: "routed" | "add" | "pull" | "sign-in";
+  readonly ollamaTag?: string;
+}
+
 export interface RouterOverview {
   readonly laya: LayaStatus;
   readonly config: RouterConfig;
   readonly projects: readonly DiscoveredProject[];
   readonly classifier: ClassifierState;
+  /** The system prompt the local classifier model gets (with this machine's projects). */
+  readonly classifierPrompt: string;
+  /** Every task kind at every difficulty and the model it runs on. */
+  readonly matrix: readonly RouteMatrixCell[];
+  readonly suggestions: Readonly<Partial<Record<RouteCellKey, readonly CellSuggestion[]>>>;
+  readonly specialties: readonly SpecialtyStatus[];
+  /** OpenRouter is signed in (its models are usable). */
+  readonly openRouterConnected: boolean;
   /** Usable roster models and what the router would send to each. */
   readonly modelUses: readonly RosterModelUse[];
   /** Models the runtime can use right now, for the roster editor. */
@@ -255,7 +321,16 @@ export function decodeRouterConfig(value: unknown): RouterConfig {
   const record = expectRecord(value, "routerConfig");
   rejectUnknownKeys(
     record,
-    ["version", "roster", "pinnedProjects", "excludedProjects", "scratchDirectory", "classifier"],
+    [
+      "version",
+      "roster",
+      "pinnedProjects",
+      "excludedProjects",
+      "scratchDirectory",
+      "classifier",
+      "routes",
+      "specialties",
+    ],
     "routerConfig",
   );
   if (record.version !== 1) throw new TypeError("routerConfig.version must be 1");
@@ -271,7 +346,51 @@ export function decodeRouterConfig(value: unknown): RouterConfig {
     ...(record.classifier === undefined
       ? {}
       : { classifier: decodeClassifierChoice(record.classifier) }),
+    ...(record.routes === undefined ? {} : { routes: decodeRoutes(record.routes) }),
+    ...(record.specialties === undefined
+      ? {}
+      : { specialties: decodeSpecialties(record.specialties) }),
   };
+}
+
+function decodeModelRef(value: unknown, label: string): ModelRef {
+  const record = expectRecord(value, label);
+  rejectUnknownKeys(record, ["provider", "modelId"], label);
+  const provider = expectString(record.provider, `${label}.provider`).trim();
+  const modelId = expectString(record.modelId, `${label}.modelId`).trim();
+  if (!provider || !modelId) throw new TypeError(`${label} needs a provider and model id`);
+  return { provider, modelId };
+}
+
+function decodeRoutes(value: unknown): Partial<Record<RouteCellKey, ModelRef>> {
+  const record = expectRecord(value, "routerConfig.routes");
+  const routes: Partial<Record<RouteCellKey, ModelRef>> = {};
+  for (const [key, ref] of Object.entries(record)) {
+    const [kind, band] = key.split(":");
+    const label = `routerConfig.routes.${key}`;
+    routes[
+      routeCellKey(
+        expectOneOf(kind, TASK_KINDS, `${label} task kind`),
+        expectOneOf(band, DIFFICULTY_BANDS, `${label} difficulty`),
+      )
+    ] = decodeModelRef(ref, label);
+  }
+  return routes;
+}
+
+function decodeSpecialties(value: unknown): Partial<Record<SpecialtyKind, SpecialtyEngineRef>> {
+  const record = expectRecord(value, "routerConfig.specialties");
+  const specialties: Partial<Record<SpecialtyKind, SpecialtyEngineRef>> = {};
+  for (const [key, raw] of Object.entries(record)) {
+    const label = `routerConfig.specialties.${key}`;
+    const engine = expectRecord(raw, label);
+    rejectUnknownKeys(engine, ["runtime", "modelId"], label);
+    specialties[expectOneOf(key, SPECIALTY_KINDS, label)] = {
+      runtime: expectOneOf(engine.runtime, SPECIALTY_RUNTIMES, `${label}.runtime`),
+      modelId: expectString(engine.modelId, `${label}.modelId`),
+    };
+  }
+  return specialties;
 }
 
 export function decodeClassifierChoice(value: unknown): ClassifierChoice {

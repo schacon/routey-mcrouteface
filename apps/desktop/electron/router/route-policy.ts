@@ -2,10 +2,14 @@ import { basename } from "node:path";
 import {
   DIFFICULTY_BANDS,
   TASK_KINDS,
+  routeCellKey,
   type DifficultyBand,
+  type ModelRef,
   type RosterModelUse,
+  type RouteMatrixCell,
   type RouteUse,
 } from "../../contracts/router";
+import type { SpecialtyKind } from "../../contracts/specialties";
 import type {
   ModelCapability,
   ModelTier,
@@ -36,10 +40,12 @@ export interface RouteContext {
   readonly sessionCwd?: string;
   /** Laya's project pick on a first turn, when it asked. */
   readonly chosenProject?: string;
+  /** A narrow task (image, audio) that a specialty tool runs this turn. */
+  readonly specialty?: SpecialtyKind;
 }
 
 /** Difficulty bands on Laya's compressed 0-4 scale; observed answers sit near 1.3-2.0. */
-function difficultyBand(difficulty: number): DifficultyBand {
+export function difficultyBand(difficulty: number): DifficultyBand {
   if (difficulty < 1.5) return "easy";
   if (difficulty < 1.8) return "moderate";
   return "hard";
@@ -51,7 +57,7 @@ const TIER_FALLBACKS: Record<ModelTier, readonly ModelTier[]> = {
   frontier: ["frontier", "hosted", "local"],
 };
 
-function preferredTier(kind: TaskKind, band: DifficultyBand): ModelTier {
+export function preferredTier(kind: TaskKind, band: DifficultyBand): ModelTier {
   if (band === "hard") return "frontier";
   // Easy work stays on this Mac when a local model is tagged for it (a local
   // coder for SQL and one-liners, a general model for quick facts).
@@ -59,13 +65,13 @@ function preferredTier(kind: TaskKind, band: DifficultyBand): ModelTier {
   return kind === "coding" || kind === "research" ? "frontier" : "hosted";
 }
 
-function thinkingFor(kind: TaskKind, band: DifficultyBand): RouteThinkingLevel {
+export function thinkingFor(kind: TaskKind, band: DifficultyBand): RouteThinkingLevel {
   if (band === "hard") return "high";
   if (band === "moderate") return "medium";
   return kind === "general" || kind === "app" ? "off" : "low";
 }
 
-function modeFor(kind: TaskKind, readOnly: number): RouteMode {
+export function modeFor(kind: TaskKind, readOnly: number): RouteMode {
   if (kind === "coding") return readOnly >= 0.7 ? "plan" : "execute";
   // Research may read and search but not write; the rest need no tools.
   if (kind === "research") return "plan";
@@ -94,23 +100,46 @@ function supportsImages(model: RosterModel, available: readonly AvailableModel[]
   );
 }
 
+interface RosterPick {
+  readonly model: RosterModel;
+  readonly tier: ModelTier;
+  readonly tagged: boolean;
+  readonly pinned: boolean;
+}
+
+function sameModel(left: ModelRef, right: ModelRef): boolean {
+  return left.provider === right.provider && left.modelId === right.modelId;
+}
+
 /**
- * The roster model for a task kind: the first model tagged for it in the
- * preferred tier, else that tier's first model, falling back across tiers.
+ * The roster model for a matrix cell: the model the cell is pinned to when it
+ * is usable, else the first model tagged for the task in the preferred tier,
+ * else that tier's first model, falling back across tiers.
  */
-function pickRosterModel(
+function pickForCell(
   kind: TaskKind,
-  wantedTier: ModelTier,
+  band: DifficultyBand,
   usable: readonly RosterModel[],
-): { readonly model: RosterModel; readonly tier: ModelTier; readonly tagged: boolean } | undefined {
-  for (const tier of TIER_FALLBACKS[wantedTier]) {
+  config: RouterConfig,
+): RosterPick | undefined {
+  const pinnedRef = config.routes?.[routeCellKey(kind, band)];
+  const pinned = pinnedRef && usable.find((model) => sameModel(model, pinnedRef));
+  if (pinned) return { model: pinned, tier: pinned.tier, tagged: true, pinned: true };
+  for (const tier of TIER_FALLBACKS[preferredTier(kind, band)]) {
     const inTier = usable.filter((model) => model.tier === tier);
     const tagged = inTier.find((model) => model.capabilities.includes(capabilityFor(kind)));
     // Local models are small specialists: use one only for what it is tagged for.
     const model = tagged ?? (tier === "local" ? undefined : inTier[0]);
-    if (model) return { model, tier, tagged: Boolean(tagged) };
+    if (model) return { model, tier, tagged: Boolean(tagged), pinned: false };
   }
   return undefined;
+}
+
+function usableModels(
+  config: RouterConfig,
+  availableModels: readonly AvailableModel[],
+): RosterModel[] {
+  return config.roster.filter((model) => isAvailable(model, availableModels));
 }
 
 /**
@@ -122,7 +151,7 @@ export function rosterModelUses(
   config: RouterConfig,
   availableModels: readonly AvailableModel[],
 ): RosterModelUse[] {
-  const usable = config.roster.filter((model) => isAvailable(model, availableModels));
+  const usable = usableModels(config, availableModels);
   const uses = new Map(
     usable.map((model) => [
       `${model.provider}/${model.modelId}`,
@@ -136,7 +165,7 @@ export function rosterModelUses(
   );
   for (const taskKind of TASK_KINDS) {
     for (const difficulty of DIFFICULTY_BANDS) {
-      const pick = pickRosterModel(taskKind, preferredTier(taskKind, difficulty), usable);
+      const pick = pickForCell(taskKind, difficulty, usable, config);
       if (pick)
         uses
           .get(`${pick.model.provider}/${pick.model.modelId}`)
@@ -144,6 +173,40 @@ export function rosterModelUses(
     }
   }
   return [...uses.values()];
+}
+
+/** Every task kind at every difficulty, as the router would resolve it now. */
+export function routeMatrix(
+  config: RouterConfig,
+  availableModels: readonly AvailableModel[],
+): RouteMatrixCell[] {
+  const usable = usableModels(config, availableModels);
+  return TASK_KINDS.flatMap((taskKind) =>
+    DIFFICULTY_BANDS.map((difficulty) => {
+      const key = routeCellKey(taskKind, difficulty);
+      const pick = pickForCell(taskKind, difficulty, usable, config);
+      const pinnedRef = config.routes?.[key];
+      return {
+        key,
+        taskKind,
+        difficulty,
+        preferredTier: preferredTier(taskKind, difficulty),
+        thinkingLevel: thinkingFor(taskKind, difficulty),
+        mode: modeFor(taskKind, 0),
+        ...(pick
+          ? {
+              pick: {
+                provider: pick.model.provider,
+                modelId: pick.model.modelId,
+                tier: pick.tier,
+              },
+            }
+          : {}),
+        pinned: Boolean(pick?.pinned),
+        ...(pinnedRef && !pick?.pinned ? { pinnedUnavailable: pinnedRef } : {}),
+      };
+    }),
+  );
 }
 
 export function resolveRouteDecision(context: RouteContext): RouteDecision {
@@ -160,13 +223,18 @@ export function resolveRouteDecision(context: RouteContext): RouteDecision {
   );
   if (context.hasImages) reasons.push("images attached: only vision-capable models");
 
-  const pick = pickRosterModel(taskKind, wantedTier, usable);
+  const pick = pickForCell(taskKind, band, usable, config);
   const chosen = pick?.model;
   const chosenTier = pick?.tier ?? wantedTier;
-  if (pick && pick.tier !== wantedTier) {
+  if (pick?.pinned) {
+    reasons.push(`the routing matrix pins ${taskKind}/${band} to ${pick.model.modelId}`);
+  } else if (config.routes?.[routeCellKey(taskKind, band)]) {
+    reasons.push(`the model pinned for ${taskKind}/${band} is not usable; using roster order`);
+  }
+  if (pick && !pick.pinned && pick.tier !== wantedTier) {
     reasons.push(`no usable ${wantedTier} model; fell back to ${pick.tier}`);
   }
-  if (pick && !pick.tagged) {
+  if (pick && !pick.pinned && !pick.tagged) {
     reasons.push(`no ${pick.tier} model is tagged for ${taskKind}; using the first one`);
   }
 
@@ -194,11 +262,13 @@ export function resolveRouteDecision(context: RouteContext): RouteDecision {
 
   const mode = modeFor(taskKind, signals.readOnly);
   reasons.push(
-    mode === "plan"
-      ? "read-only: plan or explain without changing files"
-      : mode === "answer"
-        ? "answer directly without tools"
-        : "may edit files and run commands",
+    context.specialty
+      ? `${context.specialty.replace("-", " ")}: runs through Routey's ${context.specialty} tool`
+      : mode === "plan"
+        ? "read-only: plan or explain without changing files"
+        : mode === "answer"
+          ? "answer directly without tools"
+          : "may edit files and run commands",
   );
 
   return {
@@ -210,6 +280,7 @@ export function resolveRouteDecision(context: RouteContext): RouteDecision {
     mode,
     cwd: resolveCwd(context, reasons),
     reasons,
+    ...(context.specialty ? { specialty: context.specialty } : {}),
   };
 }
 
